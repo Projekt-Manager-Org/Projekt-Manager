@@ -21,7 +21,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-8   | retired | —                                                                                    |
 | AC-9   | retired | —                                                                                    |
 | AC-10  | retired | —                                                                                    |
-| AC-11  | gap     | needs an e2e that renders both column types                                          |
 | AC-12  | gap     | needs an e2e walking Kanban dot + calendar bar + detail badge for one project        |
 | AC-13  | retired | —                                                                                    |
 | AC-14  | retired | —                                                                                    |
@@ -339,21 +338,13 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-446 | gap     | needs an e2e driving the scenario                                                    |
 | AC-449 | gap     | needs an e2e driving the scenario                                                    |
 | AC-451 | gap     | needs an e2e driving the scenario                                                    |
-| AC-452 | gap     | needs an e2e asserting the column order                                              |
-| AC-453 | gap     | e2e asserts nine columns; card placement per state is unasserted                     |
-| AC-454 | gap     | needs an e2e asserting the oldest-first card order                                   |
 | AC-455 | gap     | e2e asserts a bar is visible, not that it spans the planned dates                    |
 | AC-456 | gap     | needs an e2e with a start-only project                                               |
-| AC-460 | gap     | needs an e2e checking the card buttons in the first, middle and last state           |
-| AC-461 | gap     | needs an e2e with a card past the threshold; `aging.test.ts` covers only the helper  |
-| AC-462 | gap     | needs an e2e with a card past the threshold; `aging.test.ts` covers only the helper  |
-| AC-463 | gap     | e2e asserts the expanded header; the collapsed marker is unasserted                  |
 | AC-464 | gap     | e2e asserts the counter label, not the count                                         |
 | AC-466 | gap     | needs an e2e clicking "Filter aufheben"                                              |
 | AC-467 | gap     | needs an e2e switching views with the filter active                                  |
 | AC-468 | gap     | needs an e2e driving the scenario                                                    |
 | AC-469 | gap     | needs an e2e asserting a Monday-start week                                           |
-| AC-470 | gap     | needs an e2e below each tier width; `useCollapseTier.test.tsx` covers only the hook  |
 | AC-471 | gap     | needs an e2e clearing the start in the panel while an end is set                     |
 | AC-472 | gap     | needs an e2e navigating back from the detail page to the panel's view                |
 | AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                |

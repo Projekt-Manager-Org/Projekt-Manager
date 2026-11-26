@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { addDays, differenceInCalendarMonths, format, parseISO } from 'date-fns';
+import {
+  addDays,
+  differenceInCalendarDays,
+  differenceInCalendarMonths,
+  format,
+  parseISO,
+} from 'date-fns';
 
 /**
  * E2E Kanban board flows
@@ -74,6 +80,32 @@ async function navigateCalendarToMonthOf(page: Page, targetIso: string): Promise
   }
 }
 
+/** The workflow states table of docs/spec/index.md §3, with its default `[C]` values. */
+const BOARD_STATES = [
+  { key: 'anfrage', label: 'Anfrage', type: 'action', agingDays: 3, tier: 1 },
+  { key: 'angebot', label: 'Angebot', type: 'buffer', agingDays: 14, tier: 3 },
+  { key: 'beauftragt', label: 'Beauftragt', type: 'action', agingDays: 5, tier: 1 },
+  { key: 'geplant', label: 'Geplant', type: 'buffer', agingDays: 21, tier: 2 },
+  { key: 'in_arbeit', label: 'In Arbeit', type: 'active', agingDays: undefined, tier: 2 },
+  { key: 'abnahme', label: 'Abnahme', type: 'buffer', agingDays: 7, tier: 2 },
+  { key: 'rechnung_faellig', label: 'Rechnung fällig', type: 'action', agingDays: 3, tier: 1 },
+  { key: 'abgerechnet', label: 'Abgerechnet', type: 'buffer', agingDays: 30, tier: 3 },
+  { key: 'erledigt', label: 'Erledigt', type: 'done', agingDays: undefined, tier: 3 },
+] as const;
+type BoardState = (typeof BOARD_STATES)[number];
+
+interface ApiProject {
+  id: string;
+  number: string;
+  status: string;
+  statusChangedAt: string;
+}
+
+/** Calendar days since the project entered its state. */
+function daysInState(project: ApiProject): number {
+  return differenceInCalendarDays(new Date(), parseISO(project.statusChangedAt));
+}
+
 // Run this file's tests serially within a single worker. The suite has
 // no DB reset between tests and every test operates on the same seeded
 // geplant card (via `.first()`), so parallel workers racing on writes
@@ -96,34 +128,167 @@ test.describe('Kanban board flows', () => {
   });
 
   test.describe('Kanban board render', () => {
-    test('renders all nine state columns after login', async ({ page }) => {
-      // Kanban view with nine columns
-      const columns = [
-        'kanban-column-anfrage',
-        'kanban-column-angebot',
-        'kanban-column-beauftragt',
-        'kanban-column-geplant',
-        'kanban-column-in_arbeit',
-        'kanban-column-abnahme',
-        'kanban-column-rechnung_faellig',
-        'kanban-column-abgerechnet',
-        'kanban-column-erledigt',
-      ];
-      for (const col of columns) {
-        await expect(page.getByTestId(col)).toBeVisible();
-      }
-    });
+    test('walks the board ACs', async ({ page }) => {
+      // The API is the oracle for each card's state and entry date, so the
+      // flow holds whatever earlier specs did to the seeded projects.
+      const res = await page.request.get('/api/projects');
+      expect(res.ok(), `GET /api/projects returned ${res.status()}`).toBe(true);
+      const { data } = (await res.json()) as { data: ApiProject[] };
+      const projectById = new Map(data.map((p) => [p.id, p]));
+      await expect(page.locator('[data-testid^="project-card-"]').first()).toBeVisible();
 
-    test('raises the aged-buffer badge on the abgerechnet column', async ({ page }) => {
-      // "Make inaction visible" (kickoff.md §core): the seed parks two
-      // invoiced-but-unpaid projects a little past the 30-day abgerechnet
-      // aging threshold (seed/invoices.ts finalStatusChangedAtDaysFromNow
-      // -34/-41), so the column must surface the aged-buffer warning. At
-      // 1920px every column is expanded, so the badge renders as the
-      // `⚠ N× seit mind. D Tagen` span rather than the collapsed dot.
-      const badge = page.getByTestId('column-aged-abgerechnet');
-      await expect(badge).toBeVisible();
-      await expect(badge).toContainText('2× seit mind. 30 Tagen');
+      const cardsByState = new Map<string, ApiProject[]>();
+      for (const state of BOARD_STATES) {
+        const ids = await page
+          .getByTestId(`kanban-column-${state.key}`)
+          .locator('[data-testid^="project-card-"]')
+          .evaluateAll((els) =>
+            els.map((el) => el.getAttribute('data-testid')!.slice('project-card-'.length)),
+          );
+        cardsByState.set(
+          state.key,
+          ids.map((id) => {
+            const project = projectById.get(id);
+            expect(project, `card ${id} is not in GET /api/projects`).toBeDefined();
+            return project!;
+          }),
+        );
+      }
+      const cards = BOARD_STATES.flatMap((state) =>
+        cardsByState.get(state.key)!.map((project) => ({ state, project })),
+      );
+      const isAged = (state: BoardState, project: ApiProject) =>
+        state.agingDays !== undefined && daysInState(project) >= state.agingDays;
+
+      await test.step('AC-452 one column per state, in workflow order', async () => {
+        const keys = await page
+          .locator('[data-testid^="kanban-column-"]')
+          .evaluateAll((els) =>
+            els.map((el) => el.getAttribute('data-testid')!.slice('kanban-column-'.length)),
+          );
+        expect(keys).toEqual(BOARD_STATES.map((s) => s.key));
+        for (const state of BOARD_STATES) {
+          await expect(page.getByTestId(`column-header-${state.key}`)).toContainText(state.label);
+        }
+      });
+
+      await test.step('AC-11 action columns are distinct from buffer columns', async () => {
+        const background = (key: string) =>
+          page
+            .getByTestId(`kanban-column-${key}`)
+            .evaluate((el) => getComputedStyle(el).backgroundColor);
+        const ofType = (type: BoardState['type']) =>
+          Promise.all(BOARD_STATES.filter((s) => s.type === type).map((s) => background(s.key)));
+        const [action, buffer] = await Promise.all([ofType('action'), ofType('buffer')]);
+        for (const a of action) {
+          for (const b of buffer) expect(a).not.toBe(b);
+        }
+      });
+
+      await test.step('AC-453 each card sits in the column of its state', async () => {
+        expect(cards.length).toBeGreaterThan(0);
+        for (const { state, project } of cards) {
+          expect(project.status, `card ${project.number}`).toBe(state.key);
+        }
+      });
+
+      await test.step('AC-454 cards are ordered by entry date, oldest first', async () => {
+        const orderable = BOARD_STATES.some(
+          (s) => new Set(cardsByState.get(s.key)!.map((p) => p.statusChangedAt)).size > 1,
+        );
+        expect(orderable, 'needs a column with two entry dates').toBe(true);
+        for (const state of BOARD_STATES) {
+          const entered = cardsByState.get(state.key)!.map((p) => p.statusChangedAt);
+          const oldestFirst = [...entered].sort((a, b) => Date.parse(a) - Date.parse(b));
+          expect(entered, `column ${state.key}`).toEqual(oldestFirst);
+        }
+      });
+
+      await test.step('AC-460 transition buttons only where the transition is allowed', async () => {
+        for (const key of ['anfrage', 'erledigt']) {
+          expect(cardsByState.get(key)!.length, `needs a card in ${key}`).toBeGreaterThan(0);
+        }
+        for (const { state, project } of cards) {
+          const forward = state.key === 'erledigt' ? 0 : 1;
+          const backward = state.key === 'anfrage' || state.key === 'erledigt' ? 0 : 1;
+          await expect(page.getByTestId(`forward-button-${project.id}`)).toHaveCount(forward);
+          await expect(page.getByTestId(`backward-button-${project.id}`)).toHaveCount(backward);
+        }
+      });
+
+      await test.step('AC-461 entry date is bold from the aging threshold on', async () => {
+        const aging = cards.filter(({ state }) => state.agingDays !== undefined);
+        const aged = aging.map(({ state, project }) => isAged(state, project));
+        expect(aged, 'needs aged and fresh cards').toContain(true);
+        expect(aged, 'needs aged and fresh cards').toContain(false);
+        for (const [i, { project }] of aging.entries()) {
+          const weight = await page
+            .getByTestId(`entry-date-${project.id}`)
+            .evaluate((el) => Number(getComputedStyle(el).fontWeight));
+          expect(weight >= 700, `card ${project.number} bold`).toBe(aged[i]);
+        }
+      });
+
+      await test.step('AC-462 aged buffer cards show the days in their state', async () => {
+        const buffer = cards.filter(({ state }) => state.type === 'buffer');
+        const aged = buffer.map(({ state, project }) => isAged(state, project));
+        expect(aged, 'needs aged and fresh buffer cards').toContain(true);
+        expect(aged, 'needs aged and fresh buffer cards').toContain(false);
+        for (const [i, { project }] of buffer.entries()) {
+          const text = page.getByTestId(`aging-text-${project.id}`);
+          if (aged[i]) await expect(text).toHaveText(`seit ${daysInState(project)} Tagen`);
+          else await expect(text).toHaveCount(0);
+        }
+      });
+
+      const agedCount = (state: BoardState) =>
+        cardsByState.get(state.key)!.filter((p) => isAged(state, p)).length;
+      const bufferStates = BOARD_STATES.filter((s) => s.type === 'buffer');
+
+      await test.step('AC-463 expanded buffer header shows aged count and threshold', async () => {
+        const counts = bufferStates.map(agedCount);
+        expect(counts.some((n) => n > 0) && counts.includes(0), 'needs aged and fresh').toBe(true);
+        for (const [i, state] of bufferStates.entries()) {
+          const signal = page.getByTestId(`column-aged-${state.key}`);
+          if (counts[i] > 0) {
+            await expect(signal).toContainText(`${counts[i]}× seit mind. ${state.agingDays} Tagen`);
+          } else {
+            await expect(signal).toHaveCount(0);
+          }
+        }
+      });
+
+      await test.step('AC-470 too narrow a board collapses by tier, highest first', async () => {
+        // Each width is below the room the expanded columns need (derived in
+        // src/ui/kanban/useCollapseTier.ts); 1920 px fits all nine.
+        for (const { width, fromTier } of [
+          { width: 1920, fromTier: 4 },
+          { width: 1600, fromTier: 3 },
+          { width: 1200, fromTier: 2 },
+          { width: 800, fromTier: 1 },
+        ]) {
+          await page.setViewportSize({ width, height: 1080 });
+          for (const state of BOARD_STATES) {
+            await expect(
+              page.getByTestId(`kanban-column-${state.key}`),
+              `${state.key} at ${width}px`,
+            ).toBeVisible();
+            await expect(
+              page.getByTestId(`column-header-${state.key}`),
+              `${state.key} at ${width}px`,
+            ).toHaveCount(state.tier >= fromTier ? 0 : 1);
+          }
+        }
+      });
+
+      await test.step('AC-463 collapsed buffer column marks aged cards', async () => {
+        // At 800 px every column is collapsed.
+        for (const state of bufferStates) {
+          const marker = page.getByTestId(`column-aged-${state.key}`);
+          if (agedCount(state) > 0) await expect(marker).toBeVisible();
+          else await expect(marker).toHaveCount(0);
+        }
+      });
     });
 
     test('clicking an expanded column header collapses it, and again expands it', async ({
