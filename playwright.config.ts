@@ -211,7 +211,9 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // A retry turns a flake green and hides it. A flake fails the nightly and is
+  // triaged like any red (docs/testing/e2e-triage.md).
+  retries: 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {

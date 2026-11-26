@@ -130,7 +130,7 @@ run_post_rc() {
   STATE="$1" WORKFLOW_NAME="${2:-$WF}" \
     GH_TOKEN=x GITHUB_REPOSITORY="$REPO" RUN_ID=42 FIX="$FIX" \
     RUN_URL='https://runs/42' RUN_EVENT=schedule CONCLUSION=failure HEAD_SHA=abc123 \
-    MAINTAINER=mx RED_LABEL=ci-red EVENT_SCOPED='Deploy pending' \
+    MAINTAINER=mx RED_LABEL=ci-red EVENT_SCOPED='Deploy pending' TRIAGED=E2E \
     PATH="$TMP_ROOT/bin:$PATH" \
     bash --noprofile --norc -e "$SCRIPT" > "$FIX/out" 2>&1 || step_rc=$?
 }
@@ -296,6 +296,30 @@ jobs "$(job 1 report failure 'Open the issue')"
 errors 1 'nope'
 run_post red 'Deploy pending'
 check "a first red is closed by hand" "$FIX/issue-body" '+close this issue by hand' '-closes itself'
+
+echo "Case: a triaged workflow is closed by hand"
+fresh_none
+jobs "$(job 1 e2e failure 'Run Playwright')"
+errors 1 'boom'
+run_post red E2E
+check "a first red asks for triage" "$FIX/issue-body" \
+  '+triage the cause' '+https://github.com/o/r/blob/main/docs/testing/e2e-triage.md' '+close it by hand' '-closes itself'
+fresh
+open_issues 14 'E2E is red on main'
+jobs "$(job 1 e2e failure 'Run Playwright')"
+errors 1 'boom'
+run_post red E2E
+check "a repeat is still red, not another merge" "$FIX/comment" '+Still red — https://runs/42' '-Also red'
+fresh
+open_issues 14 'E2E is red on main'
+run_post green E2E
+check "green comments and asks for triage" "$FIX/comment" \
+  '+Green again on abc123 — https://runs/42' '+triage the red runs' '+e2e-triage.md'
+check "on this workflow's issue" "$FIX/commented-on" '+14'
+[[ -e "$FIX/closed" ]] && record no "a triaged issue stays open on green" "closed" || record yes "a triaged issue stays open on green" ""
+fresh_none
+run_post green E2E
+[[ -e "$FIX/closed" || -e "$FIX/comment" ]] && record no "no triaged issue, nothing to do" "$(ls "$FIX")" || record yes "no triaged issue, nothing to do" ""
 
 echo "Case: an issue lookup that fails posts nothing, as it could open a second issue"
 fresh

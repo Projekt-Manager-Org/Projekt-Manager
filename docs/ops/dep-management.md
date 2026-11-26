@@ -52,14 +52,14 @@ Repeat it when adding a source: compare the dashboard's list with `git grep -nE 
 
 ### What reaches you
 
-| Signal                     | Means                                         | Do                                                                     |
-| -------------------------- | --------------------------------------------- | ---------------------------------------------------------------------- |
-| PR assigned to you         | That PR is red right now                      | Fix it; the assignment clears on green                                 |
-| `ci-red` issue             | A run on `main` is red: push or nightly       | [§ CVE handling](#cve-handling); it closes on the next green run       |
-| Deploy pending issue       | A merged fix is not running yet               | [§ Deploy urgency](#deploy-urgency)                                    |
-| Docker host advisory issue | An upstream advisory on a pinned host package | [server-setup.md](server-setup.md#triaging-a-docker-host-advisory)     |
-| Dependabot email           | Critical or high advisory on an npm dep       | Direct dep: expect Renovate's PR; else [§ CVE handling](#cve-handling) |
-| `deploy.sh` refuses        | The target commit's push run is not green     | [manual-deploy.md § CI check](manual-deploy.md#ci-check)               |
+| Signal                     | Means                                         | Do                                                                                              |
+| -------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| PR assigned to you         | That PR is red right now                      | Fix it; the assignment clears on green                                                          |
+| `ci-red` issue             | A run on `main` is red: push or nightly       | [§ CVE handling](#cve-handling); it closes on the next green run, except Deploy pending and E2E |
+| Deploy pending issue       | A merged fix is not running yet               | [§ Deploy urgency](#deploy-urgency)                                                             |
+| Docker host advisory issue | An upstream advisory on a pinned host package | [server-setup.md](server-setup.md#triaging-a-docker-host-advisory)                              |
+| Dependabot email           | Critical or high advisory on an npm dep       | Direct dep: expect Renovate's PR; else [§ CVE handling](#cve-handling)                          |
+| `deploy.sh` refuses        | The target commit's push run is not green     | [manual-deploy.md § CI check](manual-deploy.md#ci-check)                                        |
 
 Why the checks sit where they do: [ADR-0028](../adr/0028-dependency-ci-coverage-matrix-and-gated-deploy.md#decision).
 
@@ -132,7 +132,7 @@ Evidence read 2026-11-07: the red `lint` runs whose logs survive (12 of the 23 s
 4. **Majors** wait under Pending Approval on the dashboard: read the upstream migration guide, tick to create the PR, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
 5. **Open Docker host advisory issues**: is the fix in Docker's apt repo yet? If so, bump per [server-setup.md § Triaging a Docker host advisory](server-setup.md#triaging-a-docker-host-advisory).
 6. **Exception register** ([§ Exception register](#exception-register)): act on rows whose `review_by` falls before the next pass; the nightly security scan turns red the day after.
-7. Red CI: triage the failure, patch or revert. `.github/workflows/notify.yml` raises the signal — a red PR assigns itself to the maintainer and clears the assignment once green, so **assigned to you = red right now**, not "was red at some point"; a red `main` (post-merge `push` or the nightly scan) opens a `ci-red` issue instead, closed automatically on the next green run. The issue and each later red run's comment list the failed jobs and steps with their error annotations, so compare them to see what is new; GitHub keeps 10 annotations per step, flagged when possibly capped. A timeout on `main` counts as red, though GitHub shows it as `cancelled`; so does cancelling a started run there by hand. The wrangler pass is the backstop, not the discovery mechanism — its remaining jobs are the cases that alert nobody: a run that never queued, a `startup_failure` (`workflow_run` does not fire, measured on #349; it cannot merge, as the required checks never report), and a PR run that timed out (it concludes `cancelled`, like a superseded run; a Renovate PR surfaces after 7 days via `Renovate health`). `Cache cleanup` is unmonitored on purpose: a failure costs disk only. Do not rely on GitHub's Actions email here: it reaches only the run's triggering actor, which on a bot-merged PR is the bot, on the post-merge push too.
+7. Red CI: triage the failure, patch or revert. `.github/workflows/notify.yml` raises the signal — a red PR assigns itself to the maintainer and clears the assignment once green, so **assigned to you = red right now**, not "was red at some point"; a red `main` (post-merge `push` or the nightly scan) opens a `ci-red` issue instead, closed automatically on the next green run (Deploy pending and E2E: by hand). The issue and each later red run's comment list the failed jobs and steps with their error annotations, so compare them to see what is new; GitHub keeps 10 annotations per step, flagged when possibly capped. A timeout on `main` counts as red, though GitHub shows it as `cancelled`; so does cancelling a started run there by hand. The wrangler pass is the backstop, not the discovery mechanism — its remaining jobs are the cases that alert nobody: a run that never queued, a `startup_failure` (`workflow_run` does not fire, measured on #349; it cannot merge, as the required checks never report), and a PR run that timed out (it concludes `cancelled`, like a superseded run; a Renovate PR surfaces after 7 days via `Renovate health`). `Cache cleanup` is unmonitored on purpose: a failure costs disk only. Do not rely on GitHub's Actions email here: it reaches only the run's triggering actor, which on a bot-merged PR is the bot, on the post-merge push too.
 
 **Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing, e.g. a new actionlint check firing on an existing workflow. Fix the finding, don't pin back. A new OSV-Scanner build that reports a fresh advisory does not red its own PR (both scans use it, so the finding is on the base too); the nightly does.
 
@@ -177,6 +177,8 @@ Editing an install step, two constraints fail silently: keep the version in the 
   - **Renovate PR `#n` open since …** — merge or fix it; a stuck PR also holds a PR-limit slot. Closing it raises `PR Closed (Blocked)`.
 
 - **`Deploy pending is red on main`** — a pushed commit could not be resolved to a PR after retries (#716; the `Last answer:` line shows what the lookup saw), or an API call failed. One push can carry several merge-queue PRs: check every PR the run's `::error::` lines name (or, if the commit list failed, every PR of that push) for `deploy-asap` by hand, then close the issue: a later green run does not close it.
+
+- **`E2E is red on main`** — [e2e-triage.md](../testing/e2e-triage.md).
 
 - **`Docker host advisories is red on main`** — the run's `::error::` lines name the cause. An upstream repo that could not be read (a 404: misspelled, deleted or private — fix the row; check its advisories by hand) or an issue that could not be opened or reopened (check the named advisory by hand) skips only that item. Any other cause reports nothing: a pinned package without a row in `docker/host-advisory-repos.txt` (add it), an unreadable pins or mapping file, an invalid `lookback_days`, or the reported-issue list unreadable (its line names the advisories it held back). Red for more than 7 days: once fixed, dispatch with `lookback_days` covering the gap.
 

@@ -20,7 +20,8 @@ name: E2E
 #   24 h at zero PR latency, and a failure is an issue to triage rather
 #   than a blocked merge. `notify.yml` monitors this workflow (it is in
 #   that file's `workflows:` filter) and raises "E2E is red on main",
-#   assigned, one issue per incident, auto-closed on green.
+#   assigned, one issue per incident. A green run comments but leaves it
+#   open: it is closed by hand once triaged (docs/testing/e2e-triage.md).
 #
 #   The constraint this meets: architecture.md §11 (E2E in CI).
 
@@ -111,8 +112,8 @@ jobs:
       # Force a clean seed on every run so each invocation starts from
       # the same snapshot regardless of lingering state from a previous run.
       SEED: force
-      # Playwright's `CI` env var governs retries, worker count, and
-      # `forbidOnly` (see playwright.config.ts).
+      # Playwright's `CI` env var governs worker count and `forbidOnly`
+      # (see playwright.config.ts).
       CI: 'true'
 
     steps:

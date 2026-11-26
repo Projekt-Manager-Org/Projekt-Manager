@@ -1,8 +1,9 @@
 # CI alerts: GitHub emails a failed run only to its triggering actor, and
 # Renovate's automerge makes that the bot. A red PR is assigned to the
-# maintainer; a workflow red on main gets one issue. Both clear on green. What
-# alerts nobody: docs/ops/dep-management.md § Weekly wrangler. `workflow_run` is
-# privileged: no checkout, and untrusted values reach the shell only via `env:`.
+# maintainer; a workflow red on main gets one issue. Both clear on green, except
+# the issues of EVENT_SCOPED and TRIAGED workflows. What alerts nobody:
+# docs/ops/dep-management.md § Weekly wrangler. `workflow_run` is privileged: no
+# checkout, and untrusted values reach the shell only via `env:`.
 name: Notify
 
 on:
@@ -42,6 +43,8 @@ env:
   RED_LABEL: ci-red
   # Reports one merge, not a state: a later green proves nothing, so its issue is closed by hand.
   EVENT_SCOPED: Deploy pending
+  # A green run does not explain a red one: a flake passes on the next run. Closed by hand after triage.
+  TRIAGED: E2E
 
 jobs:
   notify:
@@ -104,8 +107,13 @@ jobs:
           existing=$(gh api "${issues}?state=open&labels=${RED_LABEL}&per_page=100" \
             | jq -r --arg t "$title" 'map(select(.pull_request == null and .title == $t)) | first | .number // empty')
 
+          triage_doc="https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/testing/e2e-triage.md"
+
           if [ "$STATE" = 'green' ]; then
-            if [ -n "$existing" ] && [ "$WORKFLOW_NAME" != "$EVENT_SCOPED" ]; then
+            if [ -n "$existing" ] && [ "$WORKFLOW_NAME" = "$TRIAGED" ]; then
+              gh api -X POST "${issues}/${existing}/comments" \
+                -f "body=Green again on ${HEAD_SHA} — ${RUN_URL}. Still open: triage the red runs, then close it by hand (${triage_doc})." > /dev/null
+            elif [ -n "$existing" ] && [ "$WORKFLOW_NAME" != "$EVENT_SCOPED" ]; then
               gh api -X POST "${issues}/${existing}/comments" -f "body=Green again on ${HEAD_SHA} — ${RUN_URL}" > /dev/null
               gh api -X PATCH "${issues}/${existing}" -f 'state=closed' -f 'state_reason=completed' > /dev/null
             fi
@@ -139,6 +147,8 @@ jobs:
           if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
             head="Also red (another merge, \`${HEAD_SHA}\`) — ${RUN_URL}"
             closing='A later green run does not cover this commit: check the run, then close this issue by hand.'
+          elif [ "$WORKFLOW_NAME" = "$TRIAGED" ]; then
+            closing="A green run does not close it: triage the cause — fix, flake or runner noise (${triage_doc}) — then close it by hand."
           fi
           if [ -n "$existing" ]; then
             gh api -X POST "${issues}/${existing}/comments" -f "body=$(printf '%s\n\n%s' "$head" "$report")" > /dev/null
