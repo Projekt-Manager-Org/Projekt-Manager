@@ -111,6 +111,10 @@ Now: a transitive fix lands with `lockFileMaintenance` once 3 days old, or as a 
 
 Should have been caught by [ADR-0027 § 2026-09-17](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff): it mapped the cooldown's layers to Renovate's and npm's paths, not Dependabot's.
 
+### 2026-11-26 — A red E2E is closed by hand
+
+§ 5 closes a `ci-red` issue on the next green. Not for E2E: a flake passes the next run, so green explains nothing, and #398 closed that way, untriaged, and its traces expired. Its issue stays open on green until triaged ([e2e-triage.md](../testing/e2e-triage.md)). See [#566](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/566).
+
 ## References
 
 - [#740](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/740), [#637](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/637), [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/668)

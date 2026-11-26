@@ -4,10 +4,10 @@ name: E2E
 # Actions tab ("Run workflow" button). Rationale:
 #
 #   Playwright stays OUT of the push/PR gate. It is a serial
-#   (`workers: 1`) suite of ~130 tests costing 4-7 min, and the local
-#   record is a long tail of flake-chasing — putting that on the merge
-#   path taxes every PR and blocks merges on failures that are not the
-#   PR's fault.
+#   (`workers: 1`) suite costing 14-19 min (measured 2026-11), and the
+#   local record is a long tail of flake-chasing — putting that on the
+#   merge path taxes every PR and blocks merges on failures that are not
+#   the PR's fault.
 #
 #   But `workflow_dispatch`-only meant it effectively never ran: twelve
 #   runs in the project's lifetime, and #377 caught a red `main` that had
@@ -20,7 +20,8 @@ name: E2E
 #   24 h at zero PR latency, and a failure is an issue to triage rather
 #   than a blocked merge. `notify.yml` monitors this workflow (it is in
 #   that file's `workflows:` filter) and raises "E2E is red on main",
-#   assigned, one issue per incident, auto-closed on green.
+#   assigned, one issue per incident. A green run comments but leaves it
+#   open: it is closed by hand once triaged (docs/testing/e2e-triage.md).
 #
 #   The constraint this meets: architecture.md §11 (E2E in CI).
 
@@ -42,8 +43,9 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
 
-    # The suite runs 4-7 min. Unattended on a schedule there is no operator
-    # watching to cancel a hang, and the job default is 6 h of runner time.
+    # Weigh new flows against this limit (runtime: see header). Unattended
+    # on a schedule there is no operator watching to cancel a hang, and the job
+    # default is 6 h of runner time.
     timeout-minutes: 30
 
     # The same postgres service container as ci.yml's `check-shard` job. It
@@ -110,8 +112,8 @@ jobs:
       # Force a clean seed on every run so each invocation starts from
       # the same snapshot regardless of lingering state from a previous run.
       SEED: force
-      # Playwright's `CI` env var governs retries, worker count, and
-      # `forbidOnly` (see playwright.config.ts).
+      # Playwright's `CI` env var governs worker count and `forbidOnly`
+      # (see playwright.config.ts).
       CI: 'true'
 
     steps:
