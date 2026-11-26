@@ -32,12 +32,9 @@ on:
     # the two nightlies neither contend for runners nor deliver their red
     # notifications in the same minute.
     - cron: '30 3 * * *'
+  # No ref input: dispatch on the branch to test, so notify.yml routes the
+  # run by that branch, not as `main` (#1110).
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 'Branch or SHA to test (default: current branch)'
-        required: false
-        type: string
 
 jobs:
   e2e:
@@ -118,8 +115,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
