@@ -255,20 +255,20 @@ A device a user registered for their pushes. A user may register several devices
 
 A file attached to a project. Its content lives encrypted in object storage ([ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md) Layer 3, [ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)). Behavior: [verification.md §15.26](verification.md#1526-attachments).
 
-| Field                                             | Constraint                                                                                                                                                                                           |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                                              | UUID                                                                                                                                                                                                 |
-| `projectId`                                       | The owning project                                                                                                                                                                                   |
-| `status`                                          | `pending` (upload not complete) → `ready` ⇄ `hidden` (in the Papierkorb)                                                                                                                             |
-| `label`                                           | One of `angebot`, `auftragsbestaetigung`, `rechnung`, `aufmass`, `foto`, `sonstiges`; German names **[C]**                                                                                           |
-| `mimeType`                                        | One of `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`. No HEIC: the kickoff's devices are Windows and Android |
-| `kind`                                            | `photo` for the three image types, `binary` otherwise                                                                                                                                                |
-| `fileName`                                        | Non-empty, at most 255 characters; no control character (`\x00`–`\x1F`, `\x7F`), no `/` or `\`, no `"`                                                                                               |
-| `sizeBytes`                                       | Declared plaintext size of the original; at most the per-file cap **[C]** in force at upload; an import restores it whatever the cap                                                                 |
-| `ciphertextSizeBytes`, `ciphertextThumbSizeBytes` | Stored (encrypted) size of the original and of a photo's thumbnail; the thumbnail at most the thumbnail cap **[C]** in force at upload                                                               |
-| `hiddenAt`                                        | When it entered the Papierkorb; set only while `hidden`                                                                                                                                              |
-| `createdAt`                                       | Upload time                                                                                                                                                                                          |
-| `createdBy`                                       | The uploading user, from the session, never from the request. A full-account import keeps the exported value                                                                                         |
+| Field                                             | Constraint                                                                                                                                   |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                              | UUID                                                                                                                                         |
+| `projectId`                                       | The owning project                                                                                                                           |
+| `status`                                          | `pending` (upload not complete) → `ready` ⇄ `hidden` (in the Papierkorb)                                                                     |
+| `label`                                           | One of `angebot`, `auftragsbestaetigung`, `rechnung`, `aufmass`, `foto`, `sonstiges`; German names **[C]**                                   |
+| `mimeType`                                        | One of `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+| `kind`                                            | `photo` for the three image types, `binary` otherwise                                                                                        |
+| `fileName`                                        | Non-empty, at most 255 characters; no control character (`\x00`–`\x1F`, `\x7F`), no `/` or `\`, no `"`                                       |
+| `sizeBytes`                                       | Declared plaintext size of the original; at most the per-file cap **[C]** in force at upload; an import restores it whatever the cap         |
+| `ciphertextSizeBytes`, `ciphertextThumbSizeBytes` | Stored (encrypted) size of the original and of a photo's thumbnail; the thumbnail at most the thumbnail cap **[C]** in force at upload       |
+| `hiddenAt`                                        | When it entered the Papierkorb; set only while `hidden`                                                                                      |
+| `createdAt`                                       | Upload time                                                                                                                                  |
+| `createdBy`                                       | The uploading user, from the session, never from the request. A full-account import keeps the exported value                                 |
 
 **Deploy-probe namespace.** Storage keys under `__probe/` hold deploy-preflight sentinels, not attachments.
 

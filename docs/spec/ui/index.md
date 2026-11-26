@@ -4,15 +4,15 @@ Section 8 of the [product spec](../index.md): UI surface. Split into per-subsyst
 
 ## Structure
 
-| File                                       | Sections          | Contents                                                                                             |
-| ------------------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| **index.md** (this file)                   | §8.1, §8.7        | Shell: top-level layout states, navigation matrix, user menu                                         |
-| **[workflow-views.md](workflow-views.md)** | §8.2–§8.4         | Kanban, Calendar, Project Detail Panel                                                               |
-| **[management.md](management.md)**         | §8.8–§8.10, §8.13 | Project, Customer, and User management tabular CRUD views; global Audit View                         |
-| **[daten.md](daten.md)**                   | §8.11             | Daten view — unified business-data restore + export, storage usage                                   |
-| **[email-intake.md](email-intake.md)**     | §8.12             | Email Data Intake — modal LLM extraction to customer + project                                       |
-| **[project-detail.md](project-detail.md)** | §8.15             | Project Detail Page — dedicated `/projects/:id` route with attachments and per-project invoice block |
-| **[invoices.md](invoices.md)**             | §8.16             | Invoices View — list, export, draft form, invoice viewer, company profile                            |
+| File                                       | Sections                 | Contents                                                                                              |
+| ------------------------------------------ | ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| **index.md** (this file)                   | §8.1, §8.7               | Shell: top-level layout states, navigation matrix, user menu                                          |
+| **[workflow-views.md](workflow-views.md)** | §8.2–§8.4                | Kanban, Calendar, Project Detail Panel                                                                |
+| **[management.md](management.md)**         | §8.8–§8.10, §8.13, §8.14 | Project, Customer, and User management tabular CRUD views; global Audit View; Notification Rules View |
+| **[daten.md](daten.md)**                   | §8.11                    | Daten view — unified business-data restore + export, storage usage                                    |
+| **[email-intake.md](email-intake.md)**     | §8.12                    | Email Data Intake — modal LLM extraction to customer + project                                        |
+| **[project-detail.md](project-detail.md)** | §8.15                    | Project Detail Page — dedicated `/projects/:id` route with attachments and per-project invoice block  |
+| **[invoices.md](invoices.md)**             | §8.16                    | Invoices View — list, export, draft form, invoice viewer, company profile                             |
 
 ---
 
@@ -120,4 +120,4 @@ The user menu, opened from the header, offers:
 
 ---
 
-_Cross-references: [index.md](../index.md) for workflow states and assumptions, [data-model.md](../data-model.md) for entity definitions, [api.md](../api.md) for permissions and error categories, [verification.md](../verification.md) for acceptance criteria._
+_Cross-references: [index.md](../index.md) for workflow states and roles, [data-model.md](../data-model.md) for entity definitions, [api.md](../api.md) for permissions and error categories, [verification.md](../verification.md) for acceptance criteria._

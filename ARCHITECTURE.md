@@ -58,7 +58,7 @@ Stack decisions are recorded in ADRs: [ADR-0002](docs/adr/0002-tech-stack-typesc
 
 ## Architecture Overview
 
-Seven responsibility layers. Dependency flows left-to-right only, never reversed. The split on the server between **Services** and **Routes** is load-bearing — routes never touch repositories or db/schema directly; they delegate to services. This meets the kickoff's separation of concerns ([architecture.md §11](docs/spec/architecture.md#11-architectural-constraints)).
+Seven responsibility layers. Dependency flows left-to-right only, never reversed. The split on the server between **Services** and **Routes** is load-bearing — routes never touch repositories or db/schema directly; they delegate to services. This meets the kickoff's separation of concerns ([architecture.md §11](docs/spec/architecture.md#11-external-constraints)).
 
 ```
   config  <--  domain  <--  storage  <--  services  <--  routes

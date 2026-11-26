@@ -4,64 +4,32 @@ This spec defines **what** the application does — not how it does it, how it w
 
 - **How** (implementation): [ARCHITECTURE.md](../../ARCHITECTURE.md) at the repo root — the high-level navigation guide to the codebase. Major decisions with context and rationale live in [ADRs](../adr/index.md).
 - **Why** (vision, final scope, out-of-scope): [Kickoff](../project/kickoff.md).
-- **Conventions** (rules the spec must satisfy): [review/conventions-spec.md](../../review/conventions-spec.md).
 - **`[C]`** marks values deliberately made configurable so the application can be adjusted to a real company's needs. Catalogue, and which are env vars vs. source constants: [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
 ---
 
 ## 1. Goal
 
-A hosted, authenticated system for centralized management of projects, customers, and users across the main company workflow. The system persists structured data in a database, authenticates users via a configurable role-based permission matrix (see [§4.2](#42-roles)), and serves the front end through a backend API. Binary/object storage is included as a system component (see [ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module)).
-
-The system provides:
-
-- **Workflow views** — Kanban board and Calendar — making inaction visible through board structure, aging indicators, and summary counts.
-- **Management views** — tabular interfaces for projects, customers, and users with full CRUD capabilities.
-- **Data exchange** — unified export of business data and restore-only import from an exported archive (see [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md) and [verification.md §15.14](verification.md#1514-data-exchange)).
-
-All views are role-gated. The system enforces that every pending action (unanswered inquiry, unscheduled job, unsent invoice) is impossible to overlook.
+The system holds one company's projects, tracked along the workflow in [§3](#3-workflow-states), with their customers and the company's users, so that no pending action goes unnoticed. Purpose: [kickoff § Purpose](../project/kickoff.md#purpose).
 
 ---
 
 ## 2. Scope
 
-### Workflow
+Each feature's behavior is in its AC section.
 
-- Kanban board with one column per workflow state
-- Calendar view (month/week) showing scheduled projects
-- Project detail panel accessible from both views
-- State transitions (forward/backward by one step)
-- Date changes (planned start/end)
+- **Workflow** — Kanban board and calendar: [§15.1](verification.md#151-workflow-board); the worker's Meine Projekte view: [§15.15](verification.md#1515-navigation-and-interaction).
+- **Records** — projects [§15.12](verification.md#1512-projects), customers [§15.11](verification.md#1511-customer-management), users [§15.13](verification.md#1513-user-management).
+- **Access** — sign-in and sessions [§15.4](verification.md#154-authentication), role scoping [§15.21](verification.md#1521-role-scoping).
+- **Attachments** — [§15.26](verification.md#1526-attachments), storage usage [§15.29](verification.md#1529-storage-usage).
+- **Invoices** — [§15.30](verification.md#1530-invoices), company profile [§15.31](verification.md#1531-company-profile).
+- **Email data intake** — [§15.18](verification.md#1518-email-data-intake).
+- **Notifications and activity** — [§15.24](verification.md#1524-notifications), activity dock [§15.32](verification.md#1532-activity-dock), threshold monitor [§15.33](verification.md#1533-threshold-monitor), audit log [§15.23](verification.md#1523-audit-log).
+- **Data safety** — data exchange [§15.14](verification.md#1514-data-exchange), backup and recovery [§15.22](verification.md#1522-backup-and-recovery).
+- **Theming and branding** — [§15.19](verification.md#1519-theming), [§15.20](verification.md#1520-branding).
+- **Cross-cutting** — navigation and interaction [§15.15](verification.md#1515-navigation-and-interaction), multi-user [§15.5](verification.md#155-multi-user), data integrity [§15.17](verification.md#1517-data-integrity), realtime events [§15.28](verification.md#1528-realtime-events), configuration [§15.27](verification.md#1527-configuration-and-feature-manifest), deployment [§15.6](verification.md#156-deployment), security baseline [§15.34](verification.md#1534-security-baseline).
 
-### Management
-
-- Project management: searchable list with filter, sort, create, edit, soft-delete
-- Customer management: searchable list with create, edit
-- User management (admin): list, create, edit, deactivate/reactivate, password reset
-- Change-own-password for all authenticated users
-
-### Data Exchange
-
-- Unified export of the business-data layer (customers, projects, project-worker assignments) for backup and portability, gated by `data:export`.
-- Unified restore-only import from an exported archive, gated by `data:restore`.
-- Email-based data intake via LLM extraction (paste email text, review extracted customer and project fields, save).
-
-### Notifications
-
-- DB-stored admin-editable rules mapping a closed, code-defined event catalog to recipient specs ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)).
-- Two channels: browser push to the installed PWA and the in-app activity feed; system events are push-only ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed), [ui/management.md §8.13](ui/management.md#813-audit-view)).
-- Rule management for holders of `notifications:manage` ([ui/management.md §8.14](ui/management.md#814-notification-rules-view)).
-- Per-user push-mute toggle; push permission is user-initiated from the settings affordance ([ui/index.md §8.7.2](ui/index.md#872-user-menu)).
-
-### Cross-Cutting
-
-- German UI, English code
-- API layer between front end and data store
-- Persistent data storage in a database
-- User authentication (login/logout, session management) with a configurable role-based permission matrix ([§4.2](#42-roles))
-- Object storage module encapsulating all binary storage operations (see [ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module))
-- Deployment to a hosted environment (reverse proxy, application, database, object storage)
-- CI builds images and pushes to the container registry; manual pull-based deploy over VPN per [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)
+Out of scope: [kickoff § Not Doing](../project/kickoff.md#not-doing).
 
 ---
 
@@ -86,16 +54,6 @@ Aging threshold: [AC-461](verification.md#151-workflow-board), [AC-462](verifica
 ---
 
 ## 4. Reasonable Assumptions
-
-### 4.1 Company Profile
-
-| Attribute                  | Assumed Value                                               |
-| -------------------------- | ----------------------------------------------------------- |
-| Trade                      | Maler- und Lackiererbetrieb (painter / coating contractor)  |
-| Employees                  | Owner, 1 office manager, 4–6 workers, 1 external bookkeeper |
-| Concurrent active projects | 10–30                                                       |
-| Typical project duration   | 1–10 working days                                           |
-| Region                     | Single metropolitan area (~50 km radius)                    |
 
 ### 4.2 Roles
 
@@ -125,7 +83,7 @@ Each statement has one home; everywhere else, a link.
 | Format of data leaving the system                                                 | [data-model.md](data-model.md)                                                             |
 | Screen inventory — what each screen shows and offers                              | [ui/](ui/index.md)                                                                         |
 | Role ↔ permission matrix, error classes                                           | [api.md](api.md)                                                                           |
-| Constraint imposed from outside (kickoff, environment)                            | [architecture.md §11](architecture.md#11-architectural-constraints)                        |
+| Constraint imposed from outside (kickoff, environment)                            | [architecture.md §11](architecture.md#11-external-constraints)                             |
 | `[C]` value without a home above                                                  | [`[C]` catalogue](architecture.md#122-company-configurable-settings), which links the rest |
 | Feature behavior or property observable by a user, operator or attacker           | AC ([verification.md §15](verification.md#15-acceptance-criteria))                         |
 | Property that exists because of an ADR                                            | AC citing the ADR                                                                          |
