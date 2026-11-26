@@ -54,6 +54,7 @@ States, their order and per-state values: [index.md §3](index.md#3-workflow-sta
 - **AC-468** `[vis]`: The system shows dates in the configured display format ([`[C]`](architecture.md#122-company-configurable-settings), default DD.MM.YYYY); a range within one year shortens its start to DD.MM.
 - **AC-469** `[vis]`: Calendar weeks start on Monday.
 - **AC-470** `[vis]`: When the board is too narrow for all its columns expanded, the system collapses columns by tier ([index.md §3](index.md#3-workflow-states)), highest tier first.
+- **AC-788** `[vis]`: While the board's columns do not fit its width, the system lets the user scroll horizontally to every column.
 - **AC-471** `[vis]`: When a user clears the planned start in the detail panel while a planned end is set, the system clears both.
 - **AC-472** `[vis]`: When a user opens the Project Detail Page from the detail panel and then navigates back, the system shows the view the panel was opened from.
 - **AC-473** `[vis]`: While the viewport is wider than 768 px, when a user clicks a project on the board or in the calendar, the system opens its detail panel ([ui/workflow-views.md §8.4](ui/workflow-views.md#84-project-detail-panel)).

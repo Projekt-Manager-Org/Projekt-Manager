@@ -146,6 +146,41 @@ test.describe('Kanban board flows', () => {
       await column.click();
       await expect(page.getByTestId('column-header-anfrage')).toBeVisible();
     });
+
+    test('scrolls a board wider than the viewport to its last column', async ({ page }) => {
+      // AC-788. At 900px the tiers collapse columns; expanding every one
+      // makes the board wider than the viewport. A horizontal wheel — not
+      // scrollIntoView, which also moves an overflow-hidden board — proves
+      // the user can reach the last column.
+      await page.setViewportSize({ width: 900, height: 900 });
+      // At 900px (tier 1) every column collapses; Angebot's collapse shows
+      // the tier applied.
+      await expect(page.getByTestId('column-header-angebot')).toHaveCount(0);
+      const states = [
+        'anfrage',
+        'angebot',
+        'beauftragt',
+        'geplant',
+        'in_arbeit',
+        'abnahme',
+        'rechnung_faellig',
+        'abgerechnet',
+        'erledigt',
+      ];
+      for (const state of states) {
+        const header = page.getByTestId(`column-header-${state}`);
+        if ((await header.count()) === 0) {
+          await page.getByTestId(`kanban-column-${state}`).click();
+          await expect(header).toBeVisible();
+        }
+      }
+      const last = page.getByTestId('kanban-column-erledigt');
+      await expect(last).not.toBeInViewport({ ratio: 1 });
+
+      await page.getByTestId('column-header-anfrage').hover();
+      await page.mouse.wheel(10_000, 0);
+      await expect(last).toBeInViewport({ ratio: 1 });
+    });
   });
 
   test.describe('State transitions', () => {
