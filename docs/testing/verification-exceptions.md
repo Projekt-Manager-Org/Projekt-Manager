@@ -327,7 +327,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-390 | retired | —                                                                                    |
 | AC-391 | retired | —                                                                                    |
 | AC-392 | retired | —                                                                                    |
-| AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext               |
 | AC-405 | gap     | no test drives the client-side cap block or the missing retry action                 |
 | AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review   |
 | AC-452 | gap     | needs an e2e asserting the column order                                              |

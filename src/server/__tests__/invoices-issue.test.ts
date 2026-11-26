@@ -34,6 +34,7 @@
  *   - AC-693: per-tax-mode boilerplate text extracted from the
  *                      rendered PDF — `reverse_charge` includes the §13b
  *                      string, `standard` does not.
+ *   - AC-401: the stored document is ciphertext under its own key.
  *   - AC-693: PDF/A-3 + embedded `factur-x.xml` validation
  *                      against the EN 16931 XSD; `Invoice.profile`
  *                      pinned to `'zugferd-en16931'`.
@@ -50,6 +51,7 @@
  */
 
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import {
@@ -70,6 +72,7 @@ import { InvoiceIssueService } from '../services/InvoiceIssueService.js';
 import { ProjectTransitionService } from '../services/ProjectTransitionService.js';
 import { InvoiceBinaryService, type InvoiceBinaryDeps } from '../services/InvoiceBinaryService.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
+import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
 import { getEnv } from '../config/env.js';
 import { getInvoiceObjectLockDays } from '../config/index.js';
 import type { ServiceLogger } from '../services/Logger.js';
@@ -1778,5 +1781,77 @@ describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AC-693)', () => {
     // this asserts the embedded XML survives the PDF/A-3 attachment
     // pipeline without corruption. Throws on schema violation.
     await expect(validateFacturXml(xml)).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------
+// AC-401: storage receives an invoice document only encrypted, under its
+// own key. Two issued documents are read raw from the bucket: neither is
+// a PDF, and each decrypts to one only with the key wrapped on its own row.
+// ---------------------------------------------------------------------
+describe('Invoice issuance — the stored document is encrypted (AC-401)', () => {
+  let ownerToken: string;
+
+  beforeAll(async () => {
+    await startApp();
+    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+    await ensureCompanyProfileComplete(ownerToken, 'standard');
+  });
+
+  afterAll(async () => {
+    await stopApp();
+  });
+
+  it('stores each document as AES-256-GCM ciphertext under its own key', async () => {
+    const first = await rechnungFaelligProjectId(ownerToken);
+    const projects = [first, await rechnungFaelligProjectId(ownerToken, new Set([first]))];
+    const rows: { original_key: string; wrapped_dek: string }[] = [];
+    for (const projectId of projects) {
+      const draftId = await createDraft(ownerToken, projectId);
+      const issue = await authPost(
+        ownerToken,
+        `/api/invoices/${draftId}/issue`,
+        await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+      );
+      expect(issue.statusCode).toBe(200);
+      const { db, pool } = createDatabase();
+      try {
+        const res = await db.execute(sql`
+          SELECT original_key, wrapped_dek FROM attachments
+          WHERE id = ${issue.json().renderedPdfBinaryDescriptorId as string}
+        `);
+        rows.push(res.rows[0] as { original_key: string; wrapped_dek: string });
+      } finally {
+        await pool.end();
+      }
+    }
+
+    const storage = createStorageClientFromEnv(getEnv());
+    const envelope = new KeyEnvelopeService({
+      recipient: process.env.BINARY_AGE_RECIPIENT!,
+      identity: readFileSync(process.env.BINARY_AGE_IDENTITY_PATH!, 'utf-8').trim(),
+    });
+    const deks: Buffer[] = [];
+    const stored: Buffer[] = [];
+    try {
+      for (const row of rows) {
+        stored.push(Buffer.from((await storage.download(row.original_key)).data));
+        deks.push(Buffer.from(await envelope.unwrap(Buffer.from(row.wrapped_dek, 'base64'))));
+      }
+    } finally {
+      envelope.close();
+    }
+    const decrypt = (ct: Buffer, dek: Buffer): Buffer => {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', dek, ct.subarray(0, 12));
+      decipher.setAuthTag(ct.subarray(ct.length - 16));
+      return Buffer.concat([decipher.update(ct.subarray(12, ct.length - 16)), decipher.final()]);
+    };
+
+    expect(deks[0]!.equals(deks[1]!)).toBe(false);
+    for (const [i, ct] of stored.entries()) {
+      expect(ct.includes('%PDF-')).toBe(false);
+      expect(decrypt(ct, deks[i]!).subarray(0, 5).toString('utf-8')).toBe('%PDF-');
+      expect(() => decrypt(ct, deks[1 - i]!)).toThrow();
+    }
   });
 });

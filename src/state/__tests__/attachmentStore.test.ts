@@ -9,9 +9,12 @@
  *   - `error` captures the last mutation error in the German canonical
  *     form (or the server-supplied German message when present), cleared
  *     by `clearError`.
+ *   - AC-401: every object the upload PUTs is ciphertext, each under its
+ *     own key.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import crypto from 'node:crypto';
 import type {
   ApiResult,
   AttachmentInitResponse,
@@ -183,6 +186,57 @@ describe('attachmentStore — per-project list cache', () => {
     const state = useAttachmentStore.getState();
     expect(state.byProject['proj-1']?.map((a) => a.id)).toEqual(['a1']);
     expect(state.byProject['proj-2']?.map((a) => a.id)).toEqual(['b1']);
+  });
+});
+
+describe('attachmentStore — upload encrypts every object (AC-401)', () => {
+  it('PUTs the original and the thumbnail as AES-256-GCM ciphertext, each under its own key', async () => {
+    const original = crypto.randomBytes(256);
+    const thumbnail = crypto.randomBytes(64);
+    runImagePipelineMock.mockImplementationOnce(async () => ({
+      original: new Blob([original], { type: 'image/jpeg' }),
+      thumbnail: new Blob([thumbnail], { type: 'image/webp' }),
+      mimeType: 'image/jpeg',
+      sizeBytes: original.length,
+    }));
+    const descriptor = (url: string) => ({ url, headers: {}, expiresAt: '2026-04-23T10:05:00Z' });
+    initMock.mockResolvedValueOnce(
+      ok({
+        attachment: makeAttachment({ id: 'att-enc', projectId: 'proj-1' }),
+        originalUpload: descriptor('https://storage/orig'),
+        thumbnailUpload: descriptor('https://storage/thumb'),
+      }),
+    );
+    completeMock.mockResolvedValueOnce(ok(makeAttachment({ id: 'att-enc', projectId: 'proj-1' })));
+    listMock.mockResolvedValue(ok({ data: [] }));
+    const bodies = new Map<string, Buffer>();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      bodies.set(String(url), Buffer.from(await (init!.body as Blob).arrayBuffer()));
+      return new Response(null, { status: 204 });
+    });
+
+    const file = new File([original], 'photo.jpg', { type: 'image/jpeg' });
+    await useAttachmentStore.getState().uploadFile('proj-1', file, {
+      label: 'foto',
+      hasThumbnail: true,
+    });
+
+    const [, sent] = initMock.mock.calls[0]!;
+    const dek = Buffer.from(sent.dekMaterial, 'base64');
+    const thumbDek = Buffer.from(sent.thumbDekMaterial!, 'base64');
+    const decrypt = (ct: Buffer, key: Buffer): Buffer => {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, ct.subarray(0, 12));
+      decipher.setAuthTag(ct.subarray(ct.length - 16));
+      return Buffer.concat([decipher.update(ct.subarray(12, ct.length - 16)), decipher.final()]);
+    };
+    const putOriginal = bodies.get('https://storage/orig')!;
+    const putThumb = bodies.get('https://storage/thumb')!;
+
+    expect(dek.equals(thumbDek)).toBe(false);
+    expect(putOriginal.includes(original)).toBe(false);
+    expect(putThumb.includes(thumbnail)).toBe(false);
+    expect(decrypt(putOriginal, dek).equals(original)).toBe(true);
+    expect(decrypt(putThumb, thumbDek).equals(thumbnail)).toBe(true);
   });
 });
 
