@@ -18,6 +18,8 @@
  *     job `failed` with `error_detail` and performs ZERO writes — the
  *     pre-existing target rows are UNTOUCHED. The destructive wipe never
  *     runs on a corrupt / tampered / wrong-version archive.
+ *   - AC-401 — the import writes each object encrypted under its own key
+ *     (the restored original and its regenerated thumbnail).
  *   - AC-594 — restore + server re-encrypt + byte-equal
  *     roundtrip + idempotency. seed (with a ready attachment) → export job
  *     → import job (override + phrase) restores the business rows with IDs
@@ -672,11 +674,16 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const ct = Buffer.from(dl.data);
       const svc = new KeyEnvelopeService({ recipient, identity });
       let thumbDek: Buffer;
+      let originalDek: Buffer;
       try {
         thumbDek = Buffer.from(await svc.unwrap(Buffer.from(row.wrapped_thumb_dek!, 'base64')));
+        originalDek = Buffer.from(await svc.unwrap(Buffer.from(row.wrapped_dek, 'base64')));
       } finally {
         svc.close();
       }
+      // AC-401: each object under its own key — the regenerated thumbnail
+      // does not reuse the original's.
+      expect(thumbDek.equals(originalDek)).toBe(false);
       const tNonce = ct.subarray(0, 12);
       const tTag = ct.subarray(ct.length - 16);
       const tBody = ct.subarray(12, ct.length - 16);

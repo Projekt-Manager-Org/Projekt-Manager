@@ -1049,7 +1049,11 @@ export class AttachmentService {
 
           // Phase 2 — copy. A failure here throws out of the tx and
           // rolls back Phase 1 (status returns to 'hidden') AND the
-          // audit row. The bucket retains only the prior hidden version.
+          // audit row. Storage is not rolled back: if the original's copy
+          // succeeded before the thumbnail's failed, the original keeps a
+          // current version under a hidden row. A retried restore copies
+          // over it; otherwise the bucket-orphan prune hides it once the
+          // row is purged.
           //
           // The bucket lifecycle (provider-side, ADR-0022) and the row
           // reaper (app-side, AC-426) both fire on the same

@@ -16,6 +16,8 @@
  *   - download-url: AC-400 (unwrapped key never persisted), AC-413
  *     (hidden or pending row → 404).
  *   - Papierkorb: AC-419, AC-420, AC-421, AC-422, AC-425, AC-412.
+ *   - list order and completeness: AC-409 (ready only, newest first),
+ *     AC-421 (most recently hidden first).
  *
  * Wire-shape arms (response shapes, the content-type sentinel,
  * `BULK_LIMIT_EXCEEDED`, `DEK_UNWRAP_FAILED`, integrity 422s, 404 on a
@@ -1469,7 +1471,7 @@ describe('Attachment routes — integration (issue #108)', () => {
 
     // -----------------------------------------------------------------
     // Bytes-gone race — covered as a service-level unit test in
-    // `attachments-restore-bytes-gone.test.ts`. The integration shape
+    // `attachments-restore-storage-failure.test.ts`. The integration shape
     // requires destroying a specific object version, which the app
     // (and test) credentials cannot do by design (ADR-0022 capability
     // profile). The unit test stubs `copyFromVersion` to throw
@@ -1772,6 +1774,101 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(trashRes.statusCode).toBe(200);
       const body = trashRes.json() as { data: Attachment[] };
       expect(body.data.some((it) => it.id === archAttId)).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Listing completeness and order. Each arm uses a fresh project so the
+  // response is exactly the seeded rows. Timestamps are set out of
+  // insertion order, so an unordered or id-ordered query fails.
+  // -------------------------------------------------------------------
+  describe('Attachment lists — completeness and order', () => {
+    async function freshProject(number: string): Promise<string> {
+      const customersRes = await authGet(ownerToken, '/api/customers');
+      const customers = customersRes.json().customers ?? customersRes.json().data;
+      const res = await authPost(ownerToken, '/api/projects', {
+        number,
+        title: `Listing fixture ${number}`,
+        customerId: customers[0].id,
+      });
+      expect(res.statusCode).toBe(201);
+      return res.json().id as string;
+    }
+
+    async function setTimestamp(
+      column: 'created_at' | 'hidden_at',
+      id: string,
+      iso: string,
+    ): Promise<void> {
+      const { db, pool } = createDatabase();
+      try {
+        await db.execute(
+          sql`UPDATE attachments SET ${sql.identifier(column)} = ${iso}::timestamptz WHERE id = ${id}`,
+        );
+      } finally {
+        await pool.end();
+      }
+    }
+
+    it('AC-409: lists every ready attachment, newest first, without hidden or pending ones', async () => {
+      const pid = await freshProject(`${year}-AC409`);
+      const [oldest, newest, middle] = await seedReadyAttachments(pid, [
+        { sizeBytes: 100 },
+        { sizeBytes: 100, kind: 'binary', mimeType: 'application/pdf', label: 'sonstiges' },
+        { sizeBytes: 100 },
+      ]);
+      await setTimestamp('created_at', oldest, '2026-01-01T08:00:00Z');
+      await setTimestamp('created_at', newest, '2026-01-03T08:00:00Z');
+      await setTimestamp('created_at', middle, '2026-01-02T08:00:00Z');
+      // Newer than every ready row: had the filter failed, these would
+      // lead the list.
+      const hidden = await seedHiddenAttachment(pid, {
+        versionId: 'v-hidden',
+        thumbVersionId: null,
+        hasThumbnail: false,
+      });
+      await setTimestamp('created_at', hidden, '2026-01-04T08:00:00Z');
+      const initRes = await authPost(
+        ownerToken,
+        `/api/projects/${pid}/attachments/init`,
+        photoInit(),
+      );
+      expect(initRes.statusCode).toBe(201);
+
+      const res = await authGet(ownerToken, `/api/projects/${pid}/attachments`);
+
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { data: Attachment[] }).data.map((a) => a.id)).toEqual([
+        newest,
+        middle,
+        oldest,
+      ]);
+    });
+
+    it('AC-421: the Papierkorb lists every hidden attachment, most recently hidden first', async () => {
+      const pid = await freshProject(`${year}-AC421`);
+      const spec = { versionId: 'v-hidden', thumbVersionId: null, hasThumbnail: false };
+      const first = await seedHiddenAttachment(pid, spec);
+      const last = await seedHiddenAttachment(pid, spec);
+      const second = await seedHiddenAttachment(pid, spec);
+      await setTimestamp('hidden_at', first, '2026-01-01T08:00:00Z');
+      await setTimestamp('hidden_at', last, '2026-01-03T08:00:00Z');
+      await setTimestamp('hidden_at', second, '2026-01-02T08:00:00Z');
+      // Uploaded after every hide, so creation order disagrees with hide
+      // order: an order by created_at would fail.
+      await setTimestamp('created_at', first, '2026-01-06T08:00:00Z');
+      await setTimestamp('created_at', last, '2026-01-04T08:00:00Z');
+      await setTimestamp('created_at', second, '2026-01-05T08:00:00Z');
+      await seedReadyAttachments(pid, [{ sizeBytes: 100 }]);
+
+      const res = await authGet(ownerToken, `/api/projects/${pid}/attachments/trash`);
+
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { data: Attachment[] }).data.map((a) => a.id)).toEqual([
+        last,
+        second,
+        first,
+      ]);
     });
   });
 

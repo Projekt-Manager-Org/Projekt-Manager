@@ -1,8 +1,12 @@
 /**
- * Service-level test — `AttachmentService.restoreAttachment` returns
- * `410 GONE` when the source object version is no longer recoverable
- * from object storage (AC-424; the race
- * window between the bucket lifecycle reaper and the row reaper).
+ * Service-level tests — `AttachmentService.restoreAttachment` when
+ * object storage fails:
+ *   - AC-424: the source version is no longer recoverable (the race
+ *     window between the bucket lifecycle reaper and the row reaper) →
+ *     `410 GONE`.
+ *   - AC-423: any other storage failure → the attachment stays in the
+ *     Papierkorb, nothing is recorded, and the raw error reaches the
+ *     global handler, which reports it as a server error.
  *
  * Why a stand-alone file. The integration sibling
  * `attachments-routes.test.ts` cannot reach this surface because the
@@ -14,7 +18,9 @@
  * boundary gets the same coverage with no architectural compromise:
  * the AppError shape (`statusCode = 410`, `code = 'GONE'`) is what the
  * global `setErrorHandler` maps to the HTTP response, and the
- * AppError-to-response mapping is already verified elsewhere.
+ * AppError-to-response mapping is already verified elsewhere. AC-423
+ * reuses the stub with a `copyFromVersion` that fails only for the
+ * thumbnail, after the original's copy succeeded.
  *
  * Raw-SQL attachment seeding mirrors the pattern in
  * `attachments-hidden-reaper.test.ts` — we need control over fields the
@@ -69,6 +75,26 @@ async function seedHiddenForRestore(db: Database, projectId: string): Promise<{ 
             ${`attachments/${projectId}/${id}.orig`}, NULL,
             FALSE, ${'v-' + id.slice(0, 8)}, now(),
             ${wrappedDek}, NULL, 1)
+  `);
+  return { id };
+}
+
+/** A hidden photo: original and thumbnail, each with its own version. */
+async function seedHiddenPhotoForRestore(db: Database, projectId: string): Promise<{ id: string }> {
+  const id = crypto.randomUUID();
+  const wrappedDek = Buffer.alloc(192, 0x77).toString('base64');
+  await db.execute(sql`
+    INSERT INTO attachments
+      (id, project_id, status, kind, label, filename, mime_type, size_bytes,
+       ciphertext_size_bytes, ciphertext_thumb_size_bytes,
+       original_key, thumb_key, has_thumbnail, version_id, thumb_version_id, hidden_at,
+       wrapped_dek, wrapped_thumb_dek, wrapped_dek_version)
+    VALUES (${id}, ${projectId}, 'hidden', 'photo', 'foto',
+            ${`restore-photo-${id.slice(0, 6)}.jpg`}, 'image/jpeg', 2048,
+            2064, 528,
+            ${`attachments/${projectId}/${id}.orig`}, ${`attachments/${projectId}/${id}.thumb`},
+            TRUE, ${'v-' + id.slice(0, 8)}, ${'tv-' + id.slice(0, 8)}, now(),
+            ${wrappedDek}, ${wrappedDek}, 1)
   `);
   return { id };
 }
@@ -200,5 +226,89 @@ describe('AttachmentService.restoreAttachment — bytes-gone race (AC-424)', () 
       sql`SELECT COUNT(*)::int AS c FROM audit_log WHERE entity_id = ${id}`,
     );
     expect((auditCount.rows[0] as { c: number }).c).toBe(0);
+  });
+});
+
+describe('AttachmentService.restoreAttachment — storage copy fails (AC-423)', () => {
+  let db: Database;
+  let pool: pg.Pool;
+  let projectId: string;
+  let owner: AuthUser;
+
+  beforeAll(async () => {
+    validateEnvRuntime();
+    const conn = createDatabase();
+    db = conn.db;
+    pool = conn.pool;
+    await migrate(db, { migrationsFolder });
+    await seed(db, { force: true });
+    projectId = ((await db.execute(sql`SELECT id FROM projects LIMIT 1`)).rows[0] as { id: string })
+      .id;
+    const r = (
+      await db.execute(sql`
+        SELECT id, username, display_name, email, roles FROM users WHERE username = 'inhaber'
+      `)
+    ).rows[0] as {
+      id: string;
+      username: string;
+      display_name: string;
+      email: string | null;
+      roles: string[];
+    };
+    owner = {
+      id: r.id,
+      username: r.username,
+      displayName: r.display_name,
+      roles: r.roles,
+      email: r.email,
+      themePreference: 'system',
+      pushMuted: false,
+    };
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it('leaves the photo in the Papierkorb and records nothing when the thumbnail copy fails after the original was copied', async () => {
+    const env = getEnv();
+    const { id } = await seedHiddenPhotoForRestore(db, projectId);
+    const snapshot = sql`
+      SELECT status, version_id, thumb_version_id, hidden_at FROM attachments WHERE id = ${id}
+    `;
+    const before = (await db.execute(snapshot)).rows[0];
+    const outage = new Error('simulated-storage-outage');
+    const copies: string[] = [];
+    const storage = {
+      ...stubStorageBytesGone(),
+      copyFromVersion: async (key: string) => {
+        copies.push(key);
+        if (key.endsWith('.thumb')) throw outage;
+        return 'v-copied';
+      },
+    } as AttachmentStorageClient;
+    const service = new AttachmentService({
+      db,
+      storage,
+      binaryAgeRecipient: env.BINARY_AGE_RECIPIENT ?? 'age1stub',
+      binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
+    });
+
+    // The raw error, not an AppError: the global handler collapses it to
+    // a 500 SERVER_ERROR. A 4xx AppError here would misreport the outage.
+    const err = await service
+      .restoreAttachment(owner, projectId, id, SILENT_LOGGER, null)
+      .catch((e: unknown) => e);
+    expect(err).toBe(outage);
+    expect(copies).toEqual([
+      `attachments/${projectId}/${id}.orig`,
+      `attachments/${projectId}/${id}.thumb`,
+    ]);
+
+    expect((await db.execute(snapshot)).rows[0]).toEqual(before);
+    const audit = await db.execute(
+      sql`SELECT COUNT(*)::int AS c FROM audit_log WHERE entity_id = ${id}`,
+    );
+    expect((audit.rows[0] as { c: number }).c).toBe(0);
   });
 });

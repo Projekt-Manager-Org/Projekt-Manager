@@ -327,9 +327,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-390 | retired | —                                                                                    |
 | AC-391 | retired | —                                                                                    |
 | AC-392 | retired | —                                                                                    |
-| AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext               |
 | AC-405 | gap     | no test drives the client-side cap block or the missing retry action                 |
-| AC-423 | gap     | no test drives a restore whose storage copy fails with a non-410 error               |
 | AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review   |
 | AC-452 | gap     | needs an e2e asserting the column order                                              |
 | AC-453 | gap     | e2e asserts nine columns; card placement per state is unasserted                     |
@@ -355,7 +353,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based) |
 | AC-529 | gap     | needs an e2e of a failed search                                                      |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                            |
-| AC-541 | gap     | needs a test failing the delete part-way                                             |
 | AC-544 | retired | —                                                                                    |
 | AC-707 | gap     | needs a test confirming a Storno with an empty reason                                |
 | AC-712 | gap     | needs a test of the list order with drafts and issued invoices                       |
@@ -364,8 +361,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-716 | gap     | needs a test of the year options beside an active filter                             |
 | AC-720 | gap     | needs a test that a live refresh keeps an open draft form and Storno confirmation    |
 | AC-725 | gap     | needs a test of the incomplete-profile banner and its link                           |
-| AC-730 | gap     | needs a test that a document failing to load mid-export yields no archive            |
 | AC-731 | gap     | needs a test saving a draft form without a priced, described line                    |
-| AC-735 | gap     | needs a test of each save path: new customer, selected customer, no title            |
 | AC-742 | gap     | needs an e2e walking every screen in the dark theme                                  |
 | AC-771 | infra   | deploy procedure — `scripts/deploy.sh`                                               |

@@ -1,7 +1,9 @@
 /**
  * API integration tests — project purge cascades attachments.
  *
- * Pins AC-428, AC-429 and AC-430:
+ * Pins AC-428, AC-429 and AC-430, and for a customer delete AC-540 (its
+ * archived projects' attachments go too) and AC-541 (a part-way failure
+ * changes nothing):
  *
  *   - Purging a project (hard-delete) removes every `attachment` row via
  *     FK cascade AND deletes every backing object (`originalKey` and
@@ -176,6 +178,68 @@ describe('Attachment purge cascade', () => {
     expect(await objectAbsent(storage, photo.originalKey)).toBe(true);
     expect(await objectAbsent(storage, photo.thumbKey!)).toBe(true);
     expect(await objectAbsent(storage, binary.originalKey)).toBe(true);
+  });
+
+  // -------------------------------------------------------------------
+  // A customer delete that fails part-way changes nothing (AC-541). A
+  // test trigger fails the customer row's DELETE — the last domain write,
+  // after both archived projects were purged in the same transaction — so
+  // the rollback has the whole cascade to undo.
+  // -------------------------------------------------------------------
+  it('AC-541: a customer delete failing after its archived projects were purged changes nothing', async () => {
+    const created = await authPost(ownerToken, '/api/customers', {
+      name: `Delete-rollback fixture ${crypto.randomUUID().slice(0, 8)}`,
+    });
+    expect(created.statusCode).toBe(201);
+    const ownCustomerId = created.json().id as string;
+    const projects = [
+      await createProject(ownerToken, ownCustomerId),
+      await createProject(ownerToken, ownCustomerId),
+    ];
+    const photo = await seedReadyAttachment(projects[0], storage, true);
+    const binary = await seedReadyAttachment(projects[1], storage, false);
+    for (const id of projects) await archiveProject(ownerToken, id);
+
+    const { db, pool } = createDatabase();
+    const auditCount = async () =>
+      ((await db.execute(sql`SELECT COUNT(*)::int AS c FROM audit_log`)).rows[0] as { c: number })
+        .c;
+    try {
+      const auditBefore = await auditCount();
+      // DDL takes no bind parameters; the id is a uuid this test minted.
+      await pool.query(`
+        CREATE FUNCTION test_fail_customer_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'forced customer delete failure'; END $$;
+        CREATE TRIGGER test_fail_customer_delete BEFORE DELETE ON customers
+        FOR EACH ROW WHEN (OLD.id = '${ownCustomerId}')
+        EXECUTE FUNCTION test_fail_customer_delete();
+      `);
+      let del;
+      try {
+        del = await authDelete(ownerToken, `/api/customers/${ownCustomerId}`);
+      } finally {
+        await pool.query(`
+          DROP TRIGGER test_fail_customer_delete ON customers;
+          DROP FUNCTION test_fail_customer_delete();
+        `);
+      }
+
+      expect(del.statusCode).toBe(500);
+      expect((await authGet(ownerToken, `/api/customers/${ownCustomerId}`)).statusCode).toBe(200);
+      for (const id of projects) {
+        const project = await authGet(ownerToken, `/api/projects/${id}`);
+        expect(project.statusCode).toBe(200);
+        expect(project.json().deleted).toBe(true);
+      }
+      expect(await attachmentRowExists(photo.id)).toBe(true);
+      expect(await attachmentRowExists(binary.id)).toBe(true);
+      expect(await objectAbsent(storage, photo.originalKey)).toBe(false);
+      expect(await objectAbsent(storage, photo.thumbKey!)).toBe(false);
+      expect(await objectAbsent(storage, binary.originalKey)).toBe(false);
+      expect(await auditCount()).toBe(auditBefore);
+    } finally {
+      await pool.end();
+    }
   });
 
   // -------------------------------------------------------------------

@@ -8,7 +8,8 @@
  * records the returned customer id so the second attempt skips the
  * customer branch entirely.
  *
- * Also covers AC-521: extraction often yields only part of an address.
+ * Also covers AC-521: extraction often yields only part of an address, and
+ * AC-735: each save path (new customer, selected customer, no title).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -308,5 +309,84 @@ describe('EmailExtractModal — project number', () => {
 
     expect(screen.queryByTestId('project-number-available')).not.toBeInTheDocument();
     expect(screen.queryByTestId('project-number-taken')).not.toBeInTheDocument();
+  });
+});
+
+describe('AC-735: EmailExtractModal — save paths', () => {
+  const extraction = (title: string | null) =>
+    ok({
+      customer: {
+        name: 'Neue Firma',
+        phone: null,
+        email: null,
+        street: null,
+        zip: null,
+        city: null,
+      },
+      project: { title, description: null, siteAddress: null },
+    });
+
+  async function extract(onClose: () => void): Promise<void> {
+    render(<EmailExtractModal onClose={onClose} />);
+    await userEvent.type(screen.getByTestId('extract-email-input'), 'Some email body.');
+    await userEvent.click(screen.getByTestId('extract-submit'));
+    await screen.findByTestId('extract-save');
+  }
+
+  it('creates the new customer, then a project for it', async () => {
+    extractMock.mockResolvedValue(extraction('Dachsanierung'));
+    customerCreateMock.mockResolvedValue(ok({ id: 'cust-new', name: 'Neue Firma' } as Customer));
+    projectCreateMock.mockResolvedValue(ok({ id: 'proj-1' } as Project));
+    const onClose = vi.fn();
+    await extract(onClose);
+
+    await userEvent.click(screen.getByTestId('extract-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(customerCreateMock).toHaveBeenCalledTimes(1);
+    expect(customerCreateMock.mock.calls[0] as unknown).toEqual([
+      expect.objectContaining({ name: 'Neue Firma' }),
+    ]);
+    expect(projectCreateMock).toHaveBeenCalledTimes(1);
+    expect(projectCreateMock.mock.calls[0] as unknown).toEqual([
+      expect.objectContaining({ title: 'Dachsanierung', customerId: 'cust-new' }),
+    ]);
+  });
+
+  it('creates no customer when an existing one is selected, and the project for it', async () => {
+    extractMock.mockResolvedValue(extraction('Dachsanierung'));
+    customerListMock.mockResolvedValue(
+      ok({ customers: [{ id: 'cust-old', name: 'Neue Firma GmbH' } as Customer], total: 1 }),
+    );
+    projectCreateMock.mockResolvedValue(ok({ id: 'proj-1' } as Project));
+    const onClose = vi.fn();
+    await extract(onClose);
+
+    // The search runs on the extracted name; pick its match.
+    await waitFor(() => expect(customerListMock).toHaveBeenCalled());
+    await userEvent.click(screen.getByTestId('extract-customer-search'));
+    await userEvent.click(await screen.findByText('Neue Firma GmbH'));
+    await userEvent.click(screen.getByTestId('extract-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(customerCreateMock).not.toHaveBeenCalled();
+    expect(projectCreateMock).toHaveBeenCalledTimes(1);
+    expect(projectCreateMock.mock.calls[0] as unknown).toEqual([
+      expect.objectContaining({ title: 'Dachsanierung', customerId: 'cust-old' }),
+    ]);
+  });
+
+  it('creates the customer and no project when no title is given', async () => {
+    extractMock.mockResolvedValue(extraction(null));
+    customerCreateMock.mockResolvedValue(ok({ id: 'cust-new', name: 'Neue Firma' } as Customer));
+    const onClose = vi.fn();
+    await extract(onClose);
+    expect(screen.getByTestId('extract-project-title')).toHaveValue('');
+
+    await userEvent.click(screen.getByTestId('extract-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(customerCreateMock).toHaveBeenCalledTimes(1);
+    expect(projectCreateMock).not.toHaveBeenCalled();
   });
 });
