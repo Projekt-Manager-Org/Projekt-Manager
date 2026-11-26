@@ -354,7 +354,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based) |
 | AC-529 | gap     | needs an e2e of a failed search                                                      |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                            |
-| AC-541 | gap     | needs a test failing the delete part-way                                             |
 | AC-544 | retired | —                                                                                    |
 | AC-707 | gap     | needs a test confirming a Storno with an empty reason                                |
 | AC-712 | gap     | needs a test of the list order with drafts and issued invoices                       |
