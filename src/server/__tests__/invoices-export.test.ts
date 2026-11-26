@@ -13,6 +13,7 @@
  *   - Draft rejection: ids-mode draft → 422 DRAFT_NOT_EXPORTABLE
  *     before any bytes leave the wire; filter-mode silently omits.
  *   - Unknown id → 404 NOT_FOUND.
+ *   - A document that cannot be read → 500, no archive (AC-730).
  *
  * Bootstrap mirrors `invoices-routes.test.ts`: real Postgres + seeded
  * invoices spanning 2024/2025/2026. The seed delivers ~6 issued rows
@@ -27,6 +28,7 @@ import { startApp, stopApp, login, authGet, authPost } from '../../test/api-help
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { InvoiceService } from '../services/InvoiceService.js';
+import { InvoiceBinaryService } from '../services/InvoiceBinaryService.js';
 import { EXPORT_FILTER_SAFETY_CAP } from '../services/InvoiceExportService.js';
 
 interface InvoiceWire {
@@ -310,8 +312,37 @@ describe('AC-717: POST /api/invoices/export', () => {
   });
 
   // -------------------------------------------------------------------
-  // Filter narrowing — search filter trims the result set.
+  // AC-730: a document that cannot be read mid-export fails the whole
+  // export. The second of three reads fails, so a partial archive (the
+  // first PDF plus the manifest) is what a regression would deliver.
   // -------------------------------------------------------------------
+  it('AC-730: delivers no archive and reports a server error when a document cannot be read', async () => {
+    const picked = (await listNonDraftInvoices(ownerToken)).slice(0, 3);
+    expect(picked.length).toBe(3);
+    const real = InvoiceBinaryService.prototype.downloadPdf;
+    let reads = 0;
+    const spy = vi
+      .spyOn(InvoiceBinaryService.prototype, 'downloadPdf')
+      .mockImplementation(function (this: InvoiceBinaryService, invoice) {
+        reads += 1;
+        if (reads === 2) return Promise.reject(new Error('simulated storage read failure'));
+        return real.call(this, invoice);
+      });
+    try {
+      const res = await authPost(ownerToken, '/api/invoices/export', {
+        ids: picked.map((i) => i.id),
+      });
+
+      expect(reads).toBeGreaterThanOrEqual(2);
+      expect(res.statusCode).toBe(500);
+      expect(String(res.headers['content-type'])).not.toMatch(/zip/);
+      expect(res.headers['content-disposition']).toBeUndefined();
+      expect(res.json().code).toBe('SERVER_ERROR');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   // -------------------------------------------------------------------
   // Cap enforcement — a filter that matches more than
   // EXPORT_FILTER_SAFETY_CAP rows must 422, NOT silently truncate.
@@ -335,6 +366,9 @@ describe('AC-717: POST /api/invoices/export', () => {
     }
   });
 
+  // -------------------------------------------------------------------
+  // Filter narrowing — search filter trims the result set.
+  // -------------------------------------------------------------------
   it('search filter narrows the export to invoices matching the term', async () => {
     const all = await listNonDraftInvoices(ownerToken);
     // The seed places one invoice on "Kanzlei Dr. Meier" (project 019);

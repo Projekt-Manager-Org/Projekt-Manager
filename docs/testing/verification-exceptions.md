@@ -362,7 +362,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-716 | gap     | needs a test of the year options beside an active filter                             |
 | AC-720 | gap     | needs a test that a live refresh keeps an open draft form and Storno confirmation    |
 | AC-725 | gap     | needs a test of the incomplete-profile banner and its link                           |
-| AC-730 | gap     | needs a test that a document failing to load mid-export yields no archive            |
 | AC-731 | gap     | needs a test saving a draft form without a priced, described line                    |
 | AC-735 | gap     | needs a test of each save path: new customer, selected customer, no title            |
 | AC-742 | gap     | needs an e2e walking every screen in the dark theme                                  |
