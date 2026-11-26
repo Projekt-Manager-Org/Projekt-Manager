@@ -4,10 +4,10 @@ name: E2E
 # Actions tab ("Run workflow" button). Rationale:
 #
 #   Playwright stays OUT of the push/PR gate. It is a serial
-#   (`workers: 1`) suite of ~130 tests costing 4-7 min, and the local
-#   record is a long tail of flake-chasing — putting that on the merge
-#   path taxes every PR and blocks merges on failures that are not the
-#   PR's fault.
+#   (`workers: 1`) suite costing 14-19 min (measured 2026-11), and the
+#   local record is a long tail of flake-chasing — putting that on the
+#   merge path taxes every PR and blocks merges on failures that are not
+#   the PR's fault.
 #
 #   But `workflow_dispatch`-only meant it effectively never ran: twelve
 #   runs in the project's lifetime, and #377 caught a red `main` that had
@@ -42,8 +42,9 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
 
-    # The suite runs 4-7 min. Unattended on a schedule there is no operator
-    # watching to cancel a hang, and the job default is 6 h of runner time.
+    # Weigh new flows against this limit (runtime: see header). Unattended
+    # on a schedule there is no operator watching to cancel a hang, and the job
+    # default is 6 h of runner time.
     timeout-minutes: 30
 
     # The same postgres service container as ci.yml's `check-shard` job. It
