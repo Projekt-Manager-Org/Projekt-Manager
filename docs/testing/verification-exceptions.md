@@ -361,7 +361,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-508 | gap     | needs an e2e driving the scenario                                                    |
 | AC-510 | gap     | needs an e2e driving the scenario                                                    |
 | AC-511 | gap     | needs an e2e clearing the start on the detail page while an end is set               |
-| AC-514 | gap     | needs an e2e driving the scenario                                                    |
 | AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)   |
 | AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based) |
 | AC-529 | gap     | needs an e2e of a failed search                                                      |
@@ -381,16 +380,7 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-641 | gap     | needs an e2e driving the scenario                                                    |
 | AC-672 | gap     | needs an e2e driving the scenario                                                    |
 | AC-681 | gap     | needs an e2e driving the scenario                                                    |
-| AC-707 | gap     | needs an e2e confirming a Storno with an empty reason                                |
-| AC-712 | gap     | needs an e2e of the list order with drafts and issued invoices                       |
-| AC-713 | gap     | needs an e2e driving the scenario                                                    |
-| AC-714 | gap     | needs an e2e of the list search over number and recipient name                       |
-| AC-715 | gap     | needs an e2e of the year and status filters on the list                              |
-| AC-716 | gap     | needs an e2e of the year options beside an active filter                             |
 | AC-720 | gap     | needs an e2e: a live refresh keeps an open draft form and Storno confirmation        |
-| AC-725 | gap     | needs an e2e of the incomplete-profile banner and its link                           |
-| AC-726 | gap     | needs an e2e driving the scenario                                                    |
-| AC-731 | gap     | needs an e2e saving a draft form without a priced, described line                    |
 | AC-732 | gap     | needs an e2e driving the scenario                                                    |
 | AC-742 | gap     | needs an e2e walking every screen in the dark theme                                  |
 | AC-744 | gap     | needs an e2e driving the scenario                                                    |
