@@ -485,3 +485,320 @@ test.describe('Attachment placeholder for unwrappable wrapped envelope', () => {
     await expect(pdfRow.locator('[data-testid^="binary-select-"]')).toBeDisabled();
   });
 });
+
+/** The labels of data-model.md §5.13 with their German names (architecture.md §12.2). */
+const ATTACHMENT_LABEL_NAMES = {
+  angebot: 'Angebot',
+  auftragsbestaetigung: 'Auftragsbestätigung',
+  rechnung: 'Rechnung',
+  aufmass: 'Aufmaß',
+  foto: 'Foto',
+  sonstiges: 'Sonstiges',
+} as const;
+
+/**
+ * Default `[C]` caps of architecture.md §12.2. The client takes them from
+ * source constants (src/config/attachmentPipeline.ts, attachmentDefaults.ts),
+ * not an endpoint, and the e2e server sets no override.
+ */
+const PER_FILE_CAP_BYTES = 1024 * 1024;
+const BULK_MAX_FILES = 20;
+const BULK_MAX_MB = 20;
+
+const KIB = 1024;
+const BYTE_TIERS = [
+  { unit: 'B', size: 1, decimals: 0 },
+  { unit: 'KB', size: KIB, decimals: 0 },
+  { unit: 'MB', size: KIB ** 2, decimals: 2 },
+  { unit: 'GB', size: KIB ** 3, decimals: 2 },
+] as const;
+
+/**
+ * The byte format of verification.md §15.29 on a live total: powers of
+ * 1024, B and KB whole, MB and GB with two decimals after a comma. The
+ * rounding mode is left open, so the shown value may be off by less than
+ * one displayed step.
+ */
+function expectByteText(text: string, bytes: number): void {
+  const tier = [...BYTE_TIERS].reverse().find((t) => bytes >= t.size) ?? BYTE_TIERS[0];
+  const pattern = tier.decimals === 0 ? /^(\d+) (\w+)$/ : /^(\d+,\d{2}) (\w+)$/;
+  const match = text.trim().match(pattern);
+  const what = `"${text}" for ${bytes} bytes`;
+  expect(match, what).not.toBeNull();
+  expect(match![2], what).toBe(tier.unit);
+  const shown = Number(match![1].replace(',', '.')) * tier.size;
+  expect(Math.abs(shown - bytes), what).toBeLessThan(tier.size / 10 ** tier.decimals);
+}
+
+interface ApiAttachment {
+  id: string;
+  fileName: string;
+  label: string;
+  kind: string;
+}
+
+interface StorageUsage {
+  ready: { plaintext: number };
+  hidden: { plaintext: number };
+}
+
+test.describe('Attachment and storage flows (owner on a fresh project)', () => {
+  // Owner: holds `data:export` (the storage totals) and may delete any
+  // attachment. A project of its own keeps the 21-file selection below
+  // out of the seeded project the other tests share.
+  test.use({ storageState: STORAGE_STATES.owner });
+
+  test('walks the attachment and storage ACs', async ({ page }) => {
+    const stamp = Date.now() % 1_000_000_000;
+    const customer = await page.request.post('/api/customers', {
+      data: { name: `Anhang-Kunde ${stamp}` },
+    });
+    expect(customer.status(), await customer.text()).toBe(201);
+    const project = await page.request.post('/api/projects', {
+      data: { number: `AT-${stamp}`, title: 'Anhänge', customerId: (await customer.json()).id },
+    });
+    expect(project.status(), await project.text()).toBe(201);
+    const projectId = (await project.json()).id as string;
+
+    const listAttachments = async (): Promise<ApiAttachment[]> => {
+      const res = await page.request.get(`/api/projects/${projectId}/attachments`);
+      expect(res.ok(), `GET attachments returned ${res.status()}`).toBe(true);
+      return ((await res.json()) as { data: ApiAttachment[] }).data;
+    };
+    const storageUsage = async (): Promise<StorageUsage> => {
+      const res = await page.request.get('/api/storage-usage');
+      expect(res.ok(), `GET /api/storage-usage returned ${res.status()}`).toBe(true);
+      return (await res.json()) as StorageUsage;
+    };
+    const inits: string[] = [];
+    const bulkFetches: string[] = [];
+    page.on('request', (req) => {
+      if (req.url().endsWith('/attachments/init')) inits.push(req.url());
+      if (req.url().endsWith('/attachments/bulk-fetch')) bulkFetches.push(req.url());
+    });
+
+    await page.goto(`/projects/${projectId}`);
+    await expect(page.getByTestId('project-detail-page')).toBeVisible();
+    // Downloads run through the Service Worker's decrypt path.
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+
+    const uploadCta = page.getByTestId('project-detail-upload-cta');
+    const binaryInput = uploadCta.getByTestId('attachment-binary-input');
+    const photoInput = uploadCta.getByTestId('attachment-photo-input');
+    const labelSelect = uploadCta.getByLabel('Beschriftung');
+    const binaryList = page.getByTestId('project-detail-binaries');
+    const binaryRows = binaryList.locator('[data-testid^="attachment-binary-row-"]');
+    const rowNamed = (fileName: string) => binaryRows.filter({ hasText: fileName });
+    const pdf = fs.readFileSync(PDF_FIXTURE);
+    const pdfFile = (name: string, buffer = pdf) => ({ name, mimeType: 'application/pdf', buffer });
+
+    await test.step('AC-446 document label control offers the labels except foto', async () => {
+      // A closed choice: a select, not a text field.
+      expect(await labelSelect.evaluate((el) => el.tagName)).toBe('SELECT');
+      const { foto: _photoOnly, ...documentLabels } = ATTACHMENT_LABEL_NAMES;
+      const options = await labelSelect.locator('option').allTextContents();
+      expect([...options].sort()).toEqual(Object.values(documentLabels).sort());
+    });
+
+    const measured = 'Aufmaß Küche (2026).pdf';
+
+    await test.step('AC-417 a download is saved under its file name', async () => {
+      await labelSelect.selectOption({ label: ATTACHMENT_LABEL_NAMES.aufmass });
+      await binaryInput.setInputFiles(pdfFile(measured));
+      const row = rowNamed(measured);
+      await expect(row).toBeVisible({ timeout: 15_000 });
+      await expect(row).toContainText(ATTACHMENT_LABEL_NAMES.aufmass);
+      const stored = (await listAttachments()).filter((a) => a.fileName === measured);
+      expect(stored.map((a) => a.label)).toEqual(['aufmass']);
+      // Positive control: the listener sees uploads, so "no upload started" below means it.
+      expect(inits.length, 'the init listener sees an upload').toBeGreaterThan(0);
+
+      const download = page.waitForEvent('download');
+      await row.getByRole('button', { name: 'Herunterladen' }).click();
+      expect((await download).suggestedFilename()).toBe(measured);
+    });
+
+    await test.step('AC-437 a failed load keeps download and delete available', async () => {
+      const row = rowNamed(measured);
+      // A download-url server fault: neither the missing-file nor the
+      // key-unavailable verdict. The Service Worker issues the call, so
+      // the route sits on the context.
+      const downloadUrl = '**/api/projects/*/attachments/*/download-url**';
+      await page.context().route(downloadUrl, (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'INTERNAL_ERROR', message: 'Interner Fehler.' }),
+        }),
+      );
+      await row.getByRole('button', { name: 'Herunterladen' }).click();
+      await expect(row).toContainText('Datei konnte nicht geladen werden');
+      await expect(row.getByRole('button', { name: 'Herunterladen' })).toBeEnabled();
+      await expect(row.getByRole('button', { name: 'Löschen' })).toBeEnabled();
+
+      await page.context().unroute(downloadUrl);
+      const download = page.waitForEvent('download');
+      await row.getByRole('button', { name: 'Herunterladen' }).click();
+      expect((await download).suggestedFilename()).toBe(measured);
+
+      // Delete works too; the file goes to the Papierkorb, which gives the
+      // storage steps below a non-zero Papierkorb total.
+      await row.getByRole('button', { name: 'Löschen' }).click();
+      await page.getByTestId('confirm-ok').click();
+      await expect(row).toHaveCount(0);
+      // The list drops the row optimistically; wait for the server.
+      await expect
+        .poll(async () => (await listAttachments()).some((a) => a.fileName === measured))
+        .toBe(false);
+    });
+
+    await test.step('AC-406 a type outside the whitelist is blocked, naming the types', async () => {
+      const before = await listAttachments();
+      const initsBefore = inits.length;
+      const banner = uploadCta.getByTestId('upload-validation-banner');
+      for (const [input, file] of [
+        [binaryInput, { name: 'notiz.txt', mimeType: 'text/plain', buffer: Buffer.from('x') }],
+        [photoInput, { name: 'bild.gif', mimeType: 'image/gif', buffer: Buffer.from('GIF89a') }],
+      ] as const) {
+        await input.setInputFiles(file);
+        await expect(banner, file.name).toBeVisible();
+        // The whitelist of data-model.md §5.13.
+        for (const type of ['JPEG', 'PNG', 'WebP', 'PDF', 'DOCX']) {
+          await expect(banner, file.name).toContainText(type);
+        }
+        await banner.getByRole('button', { name: 'Verwerfen' }).click();
+        await expect(banner).toHaveCount(0);
+      }
+      expect(inits.length, 'no upload started').toBe(initsBefore);
+      expect(await listAttachments()).toEqual(before);
+    });
+
+    // The document half of the per-file cap AC (§15.26 Upload). Its ID joins
+    // this step once an e2e also asserts a photo measured after re-encoding:
+    // a cited AC counts as covered (scripts/check-traceability.sh).
+    await test.step('a document over the per-file cap is blocked, without retry', async () => {
+      const before = await listAttachments();
+      const initsBefore = inits.length;
+      const tooLarge = Buffer.concat([pdf, Buffer.alloc(PER_FILE_CAP_BYTES)]);
+      await binaryInput.setInputFiles(pdfFile('zu-gross.pdf', tooLarge));
+      const banner = uploadCta.getByTestId('upload-error-banner');
+      await expect(banner).toContainText('Datei zu groß');
+      await expect(banner.getByRole('button', { name: 'Erneut versuchen' })).toHaveCount(0);
+      expect(inits.length, 'no upload started').toBe(initsBefore);
+      expect(await listAttachments()).toEqual(before);
+      await banner.getByRole('button', { name: 'Verwerfen' }).click();
+      await expect(banner).toHaveCount(0);
+    });
+
+    await test.step('AC-435 a ZIP selection over a cap is blocked, naming both caps', async () => {
+      const binaries = async () => (await listAttachments()).filter((a) => a.kind === 'binary');
+      const missing = BULK_MAX_FILES + 1 - (await binaries()).length;
+      for (let i = 1; i <= missing; i++) {
+        await binaryInput.setInputFiles(pdfFile(`stapel-${String(i).padStart(2, '0')}.pdf`));
+      }
+      // 21 uploads: more than the default 5 s, below the 30 s test timeout.
+      await expect
+        .poll(async () => (await binaries()).length, { timeout: 20_000 })
+        .toBeGreaterThan(BULK_MAX_FILES);
+      await expect(binaryRows).toHaveCount((await binaries()).length);
+
+      await binaryList.getByRole('checkbox', { name: 'Alle auswählen' }).check();
+      const downloads: string[] = [];
+      page.on('download', (d) => downloads.push(d.suggestedFilename()));
+      await binaryList.getByRole('button', { name: 'Auswahl als ZIP' }).click();
+      const message = binaryList.getByTestId('binary-bulk-limit-error');
+      await expect(message).toContainText(`${BULK_MAX_FILES} Dateien`);
+      await expect(message).toContainText(`${BULK_MAX_MB} MB`);
+      expect(bulkFetches, 'blocked before any request').toEqual([]);
+      expect(downloads, 'no download').toEqual([]);
+    });
+
+    await page.goto('/daten');
+    await expect(page.getByTestId('daten-storage-row')).toBeVisible();
+    const badge = page.getByTestId('storage-usage-badge');
+    const badgeValue = badge.getByTestId('storage-usage-badge-value');
+    const tooltip = badge.getByTestId('storage-usage-badge-tooltip');
+    const tooltipLines = tooltip.locator(':scope > span');
+    const visibleRow = page.getByTestId('daten-storage-row-sichtbar');
+    const trashRow = page.getByTestId('daten-storage-row-papierkorb');
+    const after = (prefix: string) => (text: string) => {
+      expect(text.startsWith(prefix), `"${text}" starts with "${prefix}"`).toBe(true);
+      return text.slice(prefix.length);
+    };
+    const visibleTotal = after('Sichtbar: ');
+    const trashTotal = after('Im Papierkorb: ');
+
+    await test.step('AC-449 hovering the storage badge shows both totals, labeled', async () => {
+      const usage = await storageUsage();
+      expect(usage.ready.plaintext, 'needs a visible total').toBeGreaterThan(0);
+      expect(usage.hidden.plaintext, 'needs a Papierkorb total').toBeGreaterThan(0);
+      await expect(tooltip).toBeHidden();
+      await badge.hover();
+      await expect(tooltip).toBeVisible();
+      await expect(tooltipLines).toHaveCount(2);
+      await expect(async () => {
+        const { ready, hidden } = await storageUsage();
+        const [visible, trash] = await tooltipLines.allInnerTexts();
+        expectByteText(visibleTotal(visible), ready.plaintext);
+        expectByteText(trashTotal(trash), hidden.plaintext);
+      }).toPass({ timeout: 5_000 });
+    });
+
+    // The storage-totals half of the §15.29 byte-format AC. Its ID joins
+    // this step once an e2e also asserts the Export and Import progress
+    // byte counts: a cited AC counts as covered (scripts/check-traceability.sh).
+    await test.step('storage totals are shown in powers of 1024', async () => {
+      await expect(async () => {
+        const { ready, hidden } = await storageUsage();
+        expectByteText(await badgeValue.innerText(), ready.plaintext);
+        expectByteText(visibleTotal(await visibleRow.innerText()), ready.plaintext);
+        expectByteText(trashTotal(await trashRow.innerText()), hidden.plaintext);
+      }).toPass({ timeout: 5_000 });
+
+      // Each tier and its boundaries on exact values. The live totals
+      // cannot reach them, so the totals the views read are replaced. A
+      // fractional KB value stays whole; its rounding mode is left open.
+      const labeled = (prefix: string, text: string | RegExp) =>
+        typeof text === 'string'
+          ? `${prefix}${text}`
+          : new RegExp(`^${prefix}${text.source.slice(1)}`);
+      for (const [ready, hidden] of [
+        [
+          { bytes: 1023, text: '1023 B' },
+          { bytes: KIB, text: '1 KB' },
+        ],
+        [
+          { bytes: 1023 * KIB, text: '1023 KB' },
+          { bytes: KIB ** 2, text: '1,00 MB' },
+        ],
+        [
+          { bytes: 1.5 * KIB ** 2, text: '1,50 MB' },
+          { bytes: 2.25 * KIB ** 3, text: '2,25 GB' },
+        ],
+        [
+          { bytes: 1500, text: /^\d+ KB$/ },
+          { bytes: 2.5 * KIB, text: /^\d+ KB$/ },
+        ],
+      ] as const) {
+        await page.route('**/api/storage-usage', (route) =>
+          route.fulfill({
+            json: {
+              ready: { plaintext: ready.bytes, ciphertext: ready.bytes },
+              hidden: { plaintext: hidden.bytes, ciphertext: hidden.bytes },
+            },
+          }),
+        );
+        await page.reload();
+        await expect(badgeValue).toHaveText(ready.text);
+        await expect(visibleRow).toHaveText(labeled('Sichtbar: ', ready.text));
+        await expect(trashRow).toHaveText(labeled('Im Papierkorb: ', hidden.text));
+        await badge.hover();
+        await expect(tooltipLines).toHaveText([
+          labeled('Sichtbar: ', ready.text),
+          labeled('Im Papierkorb: ', hidden.text),
+        ]);
+        await page.unroute('**/api/storage-usage');
+      }
+    });
+  });
+});

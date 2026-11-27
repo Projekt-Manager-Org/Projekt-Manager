@@ -329,15 +329,9 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-390 | retired | —                                                                                    |
 | AC-391 | retired | —                                                                                    |
 | AC-392 | retired | —                                                                                    |
-| AC-405 | gap     | needs an e2e uploading a file over the cap: blocked, no retry                        |
-| AC-406 | gap     | needs an e2e driving the scenario                                                    |
-| AC-417 | gap     | needs an e2e driving the scenario                                                    |
-| AC-435 | gap     | needs an e2e driving the scenario                                                    |
-| AC-437 | gap     | needs an e2e driving the scenario                                                    |
+| AC-405 | gap     | e2e covers a document over the cap, not a photo after re-encoding                    |
 | AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review   |
-| AC-446 | gap     | needs an e2e driving the scenario                                                    |
-| AC-449 | gap     | needs an e2e driving the scenario                                                    |
-| AC-451 | gap     | needs an e2e driving the scenario                                                    |
+| AC-451 | gap     | e2e covers the storage totals, not the Export and Import progress byte counts        |
 | AC-455 | gap     | e2e asserts a bar is visible, not that it spans the planned dates                    |
 | AC-456 | gap     | needs an e2e with a start-only project                                               |
 | AC-464 | gap     | e2e asserts the counter label, not the count                                         |
