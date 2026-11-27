@@ -519,6 +519,24 @@ describe('Authentication & Session Management', () => {
       expect(body.code).toBe('SESSION_EXPIRED');
     });
 
+    it('AC-26: the signed-out session reads no project data', async () => {
+      // A history entry the browser reloads after sign-out refetches with
+      // the old cookie. Client half: `src/ui/auth/__tests__/signedOut.test.tsx`.
+      const token = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      const list = await authGet(token, '/api/projects');
+      expect(list.statusCode).toBe(200);
+      const projectId = (list.json().data as { id: string }[])[0]!.id;
+      expect((await authGet(token, `/api/projects/${projectId}`)).statusCode).toBe(200);
+
+      expect((await authPost(token, '/api/auth/logout')).statusCode).toBe(200);
+
+      for (const url of ['/api/projects', `/api/projects/${projectId}`]) {
+        const res = await authGet(token, url);
+        expect(res.statusCode, url).toBe(401);
+        expect(res.body, url).not.toContain(projectId);
+      }
+    });
+
     it("AC-551: leaves the user's other session signed in", async () => {
       const closing = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
       const other = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);

@@ -7,6 +7,9 @@
  * §8.15.1. Access follows the role matrix — a worker not assigned to
  * the project lands on the not-permitted surface per AC-149.
  *
+ * `Endgültig löschen` asks for confirmation naming the project and
+ * warning that its data is lost for good (AC-505).
+ *
  * Network surface is mocked at the API-client boundary; real stores
  * and router context run so the route param → URL read path is
  * exercised end-to-end within the component.
@@ -25,6 +28,7 @@ type ProjectResult = ApiResult<Project>;
 const projectGetMock = vi.fn<(id: string) => Promise<ProjectResult>>();
 const attachmentListMock = vi.fn<() => Promise<ApiResult<{ data: Attachment[] }>>>();
 const invoiceListMock = vi.fn<() => Promise<ApiResult<{ data: Invoice[]; total: number }>>>();
+const projectPurgeMock = vi.fn<(id: string) => Promise<ApiResult<null>>>();
 
 vi.mock('@/api/client', async (importActual) => {
   const actual = (await importActual()) as Record<string, unknown>;
@@ -37,6 +41,8 @@ vi.mock('@/api/client', async (importActual) => {
       update: vi.fn(),
       updateDates: vi.fn(),
       delete: vi.fn(),
+      purge: (...args: unknown[]) =>
+        projectPurgeMock(...(args as Parameters<typeof projectPurgeMock>)),
       transitionForward: vi.fn(),
       transitionBackward: vi.fn(),
     },
@@ -81,6 +87,7 @@ vi.mock('@/api/client', async (importActual) => {
 });
 
 const { ProjectDetailPage } = await import('@/ui/detail/ProjectDetailPage');
+const { ConfirmDialog } = await import('@/ui/common/ConfirmDialog');
 const { useAuthStore } = await import('@/state/authStore');
 const { useProjectStore } = await import('@/state/projectStore');
 const { useAttachmentStore } = await import('@/state/attachmentStore');
@@ -171,6 +178,9 @@ beforeEach(() => {
   attachmentListMock.mockResolvedValue({ ok: true, data: { data: [] } });
   invoiceListMock.mockReset();
   invoiceListMock.mockResolvedValue({ ok: true, data: { data: [], total: 0 } });
+  projectPurgeMock.mockReset();
+  // Never settles: the test asserts the dispatch, not the store's follow-up.
+  projectPurgeMock.mockReturnValue(new Promise(() => {}));
   useAuthStore.setState({ authUser: null, authError: null, sessionChecked: true });
   useProjectStore.setState({
     projects: [makeProject()],
@@ -698,5 +708,43 @@ describe('ProjectDetailPage — archived project (AC-500)', () => {
     for (const field of fields) {
       expect(field).toHaveAttribute('readonly');
     }
+  });
+});
+
+describe('ProjectDetailPage — permanent delete (AC-505)', () => {
+  it('AC-505: asks for confirmation naming the project and warning its data is lost for good', async () => {
+    const archived = makeProject({ deleted: true });
+    projectGetMock.mockResolvedValue({ ok: true, data: archived });
+    useProjectStore.setState({ projects: [archived] });
+    setAuthUser(['owner']);
+    render(
+      <MemoryRouter initialEntries={['/projects/p-42']}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        </Routes>
+        <ConfirmDialog />
+      </MemoryRouter>,
+    );
+    const purge = await screen.findByTestId('project-detail-purge');
+
+    await userEvent.click(purge);
+    // The message itself carries the warning — a dialog title or the
+    // button label alone would not. German for "data … lost for good".
+    const message = screen.getByRole('dialog').getAttribute('aria-describedby');
+    const text = document.getElementById(message!)!.textContent;
+    expect(text).toContain('P-042');
+    expect(text).toContain('Dachsanierung');
+    expect(text).toMatch(/endgültig/i);
+    expect(text).toMatch(/Daten/);
+    expect(text).toMatch(/verloren/);
+    expect(projectPurgeMock).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId('confirm-cancel'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(projectPurgeMock).not.toHaveBeenCalled();
+
+    await userEvent.click(purge);
+    await userEvent.click(screen.getByTestId('confirm-ok'));
+    expect(projectPurgeMock).toHaveBeenCalledExactlyOnceWith('p-42');
   });
 });
