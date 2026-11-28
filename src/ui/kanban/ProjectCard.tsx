@@ -51,7 +51,11 @@ export function ProjectCard({ project }: ProjectCardProps) {
       }}
     >
       <div className={styles.topRow}>
-        <span className={styles.dot} style={{ backgroundColor: config.color }} />
+        <span
+          className={styles.dot}
+          style={{ backgroundColor: config.color }}
+          data-testid={`card-dot-${project.id}`}
+        />
         <span className={styles.projectNumber}>{project.number}</span>
       </div>
       <div className={styles.title}>{project.title}</div>
