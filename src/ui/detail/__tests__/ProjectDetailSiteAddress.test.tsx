@@ -1,10 +1,10 @@
 /**
- * Component tests for the `Baustelle:` line rendered identically on
+ * Component tests for the `Baustelle` line rendered identically on
  * both the quick-glance Project Detail Panel (workflow-views.md §8.4)
  * and the Project Detail Page (project-detail.md §8.15.2).
  *
  * Covers:
- *   - AC-489, AC-490, AC-491  Both surfaces render a `Baustelle:` line:
+ *   - AC-489, AC-490, AC-491  Both surfaces render a `Baustelle` line:
  *               - non-null `project.siteAddress`         → "{street}, {zip} {city}", no hint
  *               - null + customer.address present       → customer address + "(Kundenadresse)" hint
  *               - both absent                           → "Keine Adresse" placeholder, no map link
@@ -209,9 +209,9 @@ async function findSiteAddressLineOnPage(): Promise<HTMLElement> {
 }
 
 // --------------------------------------------------------------------
-// AC-489, AC-490, AC-491 — Baustelle: line rendering on both surfaces
+// AC-489, AC-490, AC-491 — Baustelle line rendering on both surfaces
 // --------------------------------------------------------------------
-describe('Baustelle: line — non-null project.siteAddress (AC-489)', () => {
+describe('Baustelle line — non-null project.siteAddress (AC-489)', () => {
   const project = makeProject(SITE, CUSTOMER_ADDRESS);
 
   it('panel renders street, zip city from siteAddress with no fallback hint', async () => {
@@ -235,7 +235,7 @@ describe('Baustelle: line — non-null project.siteAddress (AC-489)', () => {
   });
 });
 
-describe('Baustelle: line — fallback to customer.address with hint (AC-490)', () => {
+describe('Baustelle line — fallback to customer.address with hint (AC-490)', () => {
   const project = makeProject(null, CUSTOMER_ADDRESS);
 
   it('panel renders the customer address with the (Kundenadresse) hint', async () => {
@@ -257,7 +257,7 @@ describe('Baustelle: line — fallback to customer.address with hint (AC-490)', 
   });
 });
 
-describe('Baustelle: line — both addresses absent → "Keine Adresse" (AC-491)', () => {
+describe('Baustelle line — both addresses absent → "Keine Adresse" (AC-491)', () => {
   const project = makeProject(null, null);
 
   it('panel renders the "Keine Adresse" placeholder with no map link', async () => {

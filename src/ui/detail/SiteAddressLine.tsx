@@ -1,5 +1,5 @@
 /**
- * Read-only `Baustelle:` line — shared between the quick-glance Project
+ * Read-only `Baustelle` line — shared between the quick-glance Project
  * Detail Panel ([workflow-views.md §8.4]) and the Project Detail Page
  * ([project-detail.md §8.15.2]). Both surfaces MUST render this line
  * identically; the component is the single source of truth.
