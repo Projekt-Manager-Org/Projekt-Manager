@@ -1,5 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { STRINGS } from '../src/config/strings';
+import { STATE_KEYS } from '../src/config/stateConfig';
 
 /**
  * E2E Archive flows
@@ -29,6 +34,9 @@ import { STRINGS } from '../src/config/strings';
  *
  * Seed data assumptions (inherited from auth.setup.ts):
  *   - Logged in as owner — full permissions on projects and customers.
+ *
+ * The Project Detail Page flow at the end walks that page's ACs, a step
+ * per AC, on projects it creates.
  */
 
 test.describe.configure({ mode: 'serial' });
@@ -339,5 +347,463 @@ test.describe('Archive flows', () => {
       page.getByTestId('confirm-ok').click(),
     ]);
     await expect(page.getByRole('row', { name: new RegExp(purgeCustomerName) })).toHaveCount(0);
+  });
+});
+
+const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const PDF_FIXTURE = path.join(FIXTURES, 'sample.pdf');
+const JPG_FIXTURE = path.join(FIXTURES, 'sample.jpg');
+
+interface ApiAddress {
+  street: string;
+  zip: string;
+  city: string;
+}
+
+interface ApiProject {
+  number: string;
+  title: string;
+  deleted: boolean;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  siteAddress: ApiAddress | null;
+  customer: { address: ApiAddress | null } | null;
+}
+
+interface DetailControl {
+  kind: string;
+  name: string;
+  href: string | null;
+  testId: string | null;
+  /** The page section holding the control, by its test id. */
+  section: string | null;
+}
+
+/**
+ * Every control on the Project Detail Page a user can operate: buttons,
+ * links, tabs, form fields and other focusable widgets in the DOM, minus
+ * disabled and read-only ones.
+ */
+async function operableDetailControls(page: Page): Promise<DetailControl[]> {
+  return page.getByTestId('project-detail-page').evaluate((root) =>
+    [
+      ...root.querySelectorAll<HTMLElement>(
+        [
+          'button',
+          'a[href]',
+          'input',
+          'textarea',
+          'select',
+          '[contenteditable="true"]',
+          ...['button', 'tab', 'checkbox', 'switch', 'menuitem', 'option', 'combobox', 'link'].map(
+            (role) => `[role="${role}"]`,
+          ),
+          '[tabindex]:not([tabindex="-1"])',
+        ].join(', '),
+      ),
+    ]
+      .filter((el) => {
+        const field = el as HTMLInputElement;
+        return (
+          field.disabled !== true &&
+          field.readOnly !== true &&
+          el.getAttribute('aria-disabled') !== 'true'
+        );
+      })
+      .map((el) => {
+        const type = el instanceof HTMLAnchorElement ? '' : (el as HTMLInputElement).type;
+        return {
+          kind: type ? `${el.tagName.toLowerCase()}:${type}` : el.tagName.toLowerCase(),
+          name: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(),
+          href: el.getAttribute('href'),
+          testId: el.getAttribute('data-testid'),
+          section:
+            el.parentElement
+              ?.closest('[data-testid^="project-detail-"]')
+              ?.getAttribute('data-testid') ?? null,
+        };
+      }),
+  );
+}
+
+test.describe('Project Detail Page (owner on fresh projects)', () => {
+  test('walks the project detail page ACs', async ({ page }) => {
+    const stamp = Date.now() % 1_000_000_000;
+    const createdCustomers: string[] = [];
+    const createdProjects: string[] = [];
+    const createCustomer = async (data: { name: string } & Record<string, unknown>) => {
+      const res = await page.request.post('/api/customers', { data });
+      expect(res.status(), await res.text()).toBe(201);
+      const id = (await res.json()).id as string;
+      createdCustomers.push(id);
+      return id;
+    };
+    const createProject = async (suffix: string, data: Record<string, unknown>) => {
+      const res = await page.request.post('/api/projects', {
+        data: { number: `PD-${stamp}-${suffix}`, title: `Detailseite ${suffix}`, ...data },
+      });
+      expect(res.status(), await res.text()).toBe(201);
+      const id = (await res.json()).id as string;
+      createdProjects.push(id);
+      return id;
+    };
+    const fetchProject = async (id: string): Promise<ApiProject> => {
+      const res = await page.request.get(`/api/projects/${id}`);
+      expect(res.ok(), `GET project ${id} returned ${res.status()}`).toBe(true);
+      return (await res.json()) as ApiProject;
+    };
+
+    try {
+      const customerAddress = { street: 'Kundenweg 7', zip: '50667', city: 'Köln' };
+      // A phone and an email: the page shows them as links (AC-500 scans links).
+      const withAddress = await createCustomer({
+        name: `Detail-Kunde ${stamp}`,
+        address: customerAddress,
+        phone: '0221 123456',
+        email: 'detail@example.com',
+      });
+      const withoutAddress = await createCustomer({ name: `Detail-Kunde ohne Adresse ${stamp}` });
+      const siteAddress = { street: 'Baustellenstraße 12', zip: '80331', city: 'München' };
+      const site = await createProject('S', {
+        customerId: withAddress,
+        siteAddress,
+        plannedStart: '2026-03-02',
+        plannedEnd: '2026-03-13',
+      });
+      const fallback = await createProject('K', { customerId: withAddress });
+      const none = await createProject('N', { customerId: withoutAddress });
+      const workers = await page.request.get('/api/workers');
+      expect(workers.ok(), `GET /api/workers returned ${workers.status()}`).toBe(true);
+      const worker = ((await workers.json()) as { data: { userId: string; displayName: string }[] })
+        .data[0];
+      expect(worker, 'needs an active worker').toBeDefined();
+      const archivable = await createProject('A', {
+        customerId: withAddress,
+        assignedWorkerIds: [worker.userId],
+      });
+
+      const panel = page.getByTestId('detail-panel');
+      const openPanel = async (id: string) => {
+        await page.goto('/kanban');
+        await page.getByTestId(`project-card-${id}`).click();
+        await expect(panel).toBeVisible();
+      };
+      const openPage = async (id: string) => {
+        await page.goto(`/projects/${id}`);
+        await expect(page.getByTestId('project-detail-page')).toBeVisible();
+      };
+      /** Runs `check` on the Baustelle line of the panel, then of the page. */
+      const onBothLines = async (id: string, check: (line: Locator) => Promise<void>) => {
+        await openPanel(id);
+        await check(panel.getByTestId('detail-site-address'));
+        await openPage(id);
+        await check(page.getByTestId('project-detail-site-address'));
+      };
+      /** The line's text after its `Baustelle` label. */
+      const lineValue = async (line: Locator) => {
+        const text = ((await line.textContent()) ?? '').replace(/\s+/g, ' ').trim();
+        const label = 'Baustelle';
+        expect(text.startsWith(label), `"${text}" starts with "${label}"`).toBe(true);
+        return text.slice(label.length).replace(/^:/, '').trim();
+      };
+      const expectShowsAddress = (text: string, address: ApiAddress) => {
+        for (const part of [address.street, address.zip, address.city]) {
+          expect(text, `"${text}" shows ${part}`).toContain(part);
+        }
+      };
+      /** A map link's target, URL-decoded. */
+      const linkTarget = async (link: Locator) =>
+        decodeURIComponent(((await link.getAttribute('href')) ?? '').replace(/\+/g, ' '));
+
+      await test.step('AC-207 the panel offers Öffnen, which opens the project page', async () => {
+        const { number, title } = await fetchProject(site);
+        await openPanel(site);
+        await panel.getByRole('button', { name: 'Öffnen', exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`/projects/${site}$`));
+        const detail = page.getByTestId('project-detail-page');
+        await expect(detail).toBeVisible();
+        await expect(detail.getByTestId('project-detail-header')).toContainText(number);
+        await expect(detail.getByTestId('project-title-edit')).toHaveValue(title);
+      });
+
+      await test.step('AC-489 a project with its own site address shows it', async () => {
+        const project = await fetchProject(site);
+        expect(project.siteAddress, 'needs a site address').not.toBeNull();
+        expect(project.customer?.address, 'needs a customer address to lose to').toBeTruthy();
+        await onBothLines(site, async (line) => {
+          const value = await lineValue(line);
+          expectShowsAddress(value, project.siteAddress!);
+          expect(value).not.toContain(project.customer!.address!.street);
+          expect(value).not.toContain('(Kundenadresse)');
+        });
+      });
+
+      await test.step('AC-490 without a site address the customer address shows, marked', async () => {
+        const project = await fetchProject(fallback);
+        expect(project.siteAddress).toBeNull();
+        const address = project.customer?.address;
+        expect(address, 'needs a customer address').toBeTruthy();
+        await onBothLines(fallback, async (line) => {
+          const value = await lineValue(line);
+          expectShowsAddress(value, address!);
+          const hint = value.indexOf('(Kundenadresse)');
+          expect(hint, `"${value}" carries the hint`).toBeGreaterThan(-1);
+          for (const part of [address!.street, address!.zip, address!.city]) {
+            expect(hint, `the hint follows ${part}`).toBeGreaterThan(value.indexOf(part));
+          }
+        });
+      });
+
+      await test.step('AC-491 with no address at all the line reads "Keine Adresse"', async () => {
+        const project = await fetchProject(none);
+        expect([project.siteAddress, project.customer?.address ?? null]).toEqual([null, null]);
+        await onBothLines(none, async (line) => {
+          expect(await lineValue(line)).toBe('Keine Adresse');
+        });
+      });
+
+      await test.step('AC-283 the line has one map link, to the shown address; none without', async () => {
+        const siteProject = await fetchProject(site);
+        const cases = [
+          { id: site, shown: siteProject.siteAddress, other: siteProject.customer?.address },
+          { id: fallback, shown: (await fetchProject(fallback)).customer?.address ?? null },
+          { id: none, shown: null },
+        ];
+        expect(cases.filter((c) => c.shown).length, 'needs lines with an address').toBe(2);
+        for (const { id, shown, other } of cases) {
+          await onBothLines(id, async (line) => {
+            const links = line.getByRole('link');
+            if (!shown) {
+              await expect(links).toHaveCount(0);
+              return;
+            }
+            await expect(links).toHaveCount(1);
+            const target = await linkTarget(links);
+            expectShowsAddress(target, shown);
+            // The site address wins in the link too.
+            if (other) expect(target).not.toContain(other.street);
+          });
+        }
+      });
+
+      await test.step('AC-511 clearing the planned start clears the planned end too', async () => {
+        const before = await fetchProject(site);
+        expect(before.plannedEnd, 'needs a planned end').not.toBeNull();
+        await openPage(site);
+        const start = page.getByTestId('project-detail-start');
+        const end = page.getByTestId('project-detail-end');
+        await expect(start).toHaveValue(before.plannedStart!);
+        await expect(end).toHaveValue(before.plannedEnd!);
+        await start.fill('');
+        const [patch] = await Promise.all([
+          page.waitForResponse(
+            (r) =>
+              r.url().endsWith(`/api/projects/${site}/dates`) && r.request().method() === 'PATCH',
+          ),
+          start.blur(),
+        ]);
+        expect(patch.ok(), `PATCH dates ${patch.status()}`).toBe(true);
+        await expect(start).toHaveValue('');
+        await expect(end).toHaveValue('');
+        const after = await fetchProject(site);
+        expect([after.plannedStart, after.plannedEnd]).toEqual([null, null]);
+      });
+
+      await test.step('AC-506 Archivieren and Wiederherstellen ask, naming the project', async () => {
+        const { number, title } = await fetchProject(archivable);
+        const dialog = page.getByTestId('confirm-dialog');
+        const expectNamesProject = async () => {
+          await expect(dialog).toBeVisible();
+          await expect(dialog).toContainText(number);
+          await expect(dialog).toContainText(title);
+        };
+        const isArchived = async () => (await fetchProject(archivable)).deleted;
+        const cancel = async (archived: boolean) => {
+          await page.getByTestId('confirm-cancel').click();
+          await expect(dialog).toHaveCount(0);
+          expect(await isArchived(), 'a cancel changes nothing').toBe(archived);
+        };
+
+        // The project list offers Archivieren too.
+        await page.goto('/projects');
+        await page
+          .getByRole('row', { name: new RegExp(number) })
+          .getByRole('button', { name: 'Archivieren', exact: true })
+          .click();
+        await expectNamesProject();
+        await cancel(false);
+
+        await openPage(archivable);
+        const archive = page.getByRole('button', { name: 'Archivieren', exact: true });
+        await archive.click();
+        await expectNamesProject();
+        await cancel(false);
+        await archive.click();
+        await expectNamesProject();
+        await page.getByTestId('confirm-ok').click();
+        await expect.poll(isArchived).toBe(true);
+
+        await openPage(archivable);
+        const restore = page.getByRole('button', { name: 'Wiederherstellen', exact: true });
+        await restore.click();
+        await expectNamesProject();
+        await cancel(true);
+        await restore.click();
+        await expectNamesProject();
+        await page.getByTestId('confirm-ok').click();
+        await expect.poll(isArchived).toBe(false);
+      });
+
+      await test.step('AC-500 an archived project page shows a notice and offers no change', async () => {
+        // A document, an assigned worker, the invoice-due state and a draft
+        // invoice: on an active project, each offers a change.
+        for (const from of STATE_KEYS.slice(0, STATE_KEYS.indexOf('rechnung_faellig'))) {
+          const res = await page.request.post(`/api/projects/${archivable}/transition/forward`, {
+            data: { expectedStatus: from },
+          });
+          expect(res.ok(), `transition from ${from}: ${res.status()}`).toBe(true);
+        }
+        const draft = await page.request.post('/api/invoices', {
+          data: {
+            projectId: archivable,
+            lines: [
+              {
+                description: 'Anstrich',
+                quantity: 1,
+                unit: 'pauschal',
+                unitPrice: 100,
+                taxRate: 19,
+              },
+            ],
+            taxMode: 'standard',
+            performanceDate: new Date().toISOString().slice(0, 10),
+          },
+        });
+        expect(draft.ok(), `POST /api/invoices ${draft.status()}: ${await draft.text()}`).toBe(
+          true,
+        );
+        const draftId = (await draft.json()).id as string;
+        await openPage(archivable);
+        const fileName = 'plan.pdf';
+        const upload = page.getByTestId('project-detail-upload-cta');
+        await upload.getByTestId('attachment-binary-input').setInputFiles({
+          name: fileName,
+          mimeType: 'application/pdf',
+          buffer: fs.readFileSync(PDF_FIXTURE),
+        });
+        await upload.getByTestId('attachment-photo-input').setInputFiles(JPG_FIXTURE);
+        const photos = page.getByTestId('project-detail-photos');
+        const binaries = page.getByTestId('project-detail-binaries');
+        // The sections that load on their own have loaded before the controls are read.
+        const expectLoaded = async () => {
+          await expect(binaries).toContainText(fileName, { timeout: 15_000 });
+          await expect(photos.locator('[data-testid^="photo-thumb-"]')).toHaveCount(1, {
+            timeout: 15_000,
+          });
+          await expect(page.getByTestId(`invoice-row-${draftId}`)).toBeVisible();
+        };
+
+        // This test's reading of "no change": opening, viewing, downloading,
+        // selecting for a download, switching tabs, expanding the activity
+        // feed and following a contact, map or list link store nothing.
+        const readNames = new Set<string>([
+          STRINGS.attachments.downloadAll,
+          STRINGS.attachments.tabAttachments,
+          'Papierkorb',
+          STRINGS.attachments.selectAll,
+          fileName,
+          STRINGS.attachments.view,
+          'Herunterladen',
+          'Auswahl als ZIP',
+          STRINGS.audit.detailsShow,
+          STRINGS.audit.detailsHide,
+          STRINGS.audit.loadOlder,
+          STRINGS.audit.toggleShowAll,
+          STRINGS.ui.openMaps,
+          'Alle Rechnungen anzeigen',
+        ]);
+        const isRead = (c: DetailControl) =>
+          readNames.has(c.name) ||
+          /^(tel|mailto):/.test(c.href ?? '') ||
+          // A thumbnail opens the photo in the lightbox.
+          (c.testId ?? '').startsWith('photo-thumb-');
+        const offeredChanges = async () =>
+          (await operableDetailControls(page)).filter((c) => !isRead(c));
+        const notice = page.getByTestId('project-detail-archived-notice');
+
+        // Positive control: the scan sees the links an active page shows and
+        // the changes it offers.
+        await expectLoaded();
+        await expect(notice).toHaveCount(0);
+        const links = (await operableDetailControls(page)).filter((c) => c.kind === 'a');
+        expect(links.map((c) => c.href ?? '')).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(/^tel:/),
+            expect.stringMatching(/^mailto:/),
+          ]),
+        );
+        expect(links.map((c) => c.name)).toEqual(
+          expect.arrayContaining([STRINGS.ui.openMaps, 'Alle Rechnungen anzeigen']),
+        );
+        const active = await offeredChanges();
+        expect(active.map((c) => c.name)).toEqual(
+          expect.arrayContaining([
+            'Archivieren',
+            STRINGS.attachments.removeWorkerNamed(worker.displayName),
+            'Neue Rechnung',
+            'Bearbeiten',
+            'Ausstellen',
+            'Verwerfen',
+          ]),
+        );
+        for (const section of ['project-detail-photos', 'project-detail-binaries']) {
+          expect(active, `a delete control in ${section}`).toContainEqual(
+            expect.objectContaining({ name: STRINGS.ui.delete, section }),
+          );
+        }
+        expect(active.map((c) => c.kind)).toEqual(
+          expect.arrayContaining([
+            'textarea:textarea',
+            'input:date',
+            'input:file',
+            'select:select-one',
+          ]),
+        );
+
+        const archived = await page.request.delete(`/api/projects/${archivable}`);
+        expect(archived.ok(), `archive ${archived.status()}`).toBe(true);
+        await openPage(archivable);
+        await expect(notice).toHaveText(STRINGS.attachments.archivedReadOnlyNotice);
+        await expectLoaded();
+        expect((await offeredChanges()).map((c) => c.name).sort()).toEqual(
+          ['Wiederherstellen', 'Endgültig löschen'].sort(),
+        );
+      });
+
+      await test.step('AC-508 a project that does not exist shows a not-found message', async () => {
+        const missing = randomUUID();
+        const res = await page.request.get(`/api/projects/${missing}`);
+        expect(res.status(), 'the project does not exist').toBe(404);
+        await page.goto(`/projects/${missing}`);
+        await expect(
+          page.getByRole('heading', { name: STRINGS.attachments.notFoundHeading }),
+        ).toBeVisible();
+        await expect(page.getByText(STRINGS.attachments.notFoundBody)).toBeVisible();
+        await expect(page.getByTestId('project-detail-page')).toHaveCount(0);
+      });
+    } finally {
+      // Archive the fixtures, then delete their customers, which purges the
+      // archived projects (AC-531): later tests see the board they expect.
+      for (const id of createdProjects) {
+        const res = await page.request.delete(`/api/projects/${id}`);
+        // Soft: a failed cleanup must not mask the failing AC step. An
+        // already archived project answers 404 (AC-499).
+        expect.soft([200, 404], `archive ${id}: ${res.status()}`).toContain(res.status());
+      }
+      for (const id of createdCustomers) {
+        const res = await page.request.delete(`/api/customers/${id}`);
+        expect.soft(res.ok(), `delete customer ${id}: ${res.status()}`).toBe(true);
+      }
+    }
   });
 });

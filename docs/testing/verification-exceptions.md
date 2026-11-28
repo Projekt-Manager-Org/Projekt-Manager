@@ -169,7 +169,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-204 | retired | —                                                                                    |
 | AC-205 | retired | —                                                                                    |
 | AC-206 | retired | —                                                                                    |
-| AC-207 | gap     | needs an e2e driving the scenario                                                    |
 | AC-208 | retired | —                                                                                    |
 | AC-209 | retired | —                                                                                    |
 | AC-210 | retired | —                                                                                    |
@@ -237,7 +236,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-280 | retired | —                                                                                    |
 | AC-281 | retired | —                                                                                    |
 | AC-282 | retired | —                                                                                    |
-| AC-283 | gap     | needs an e2e driving the scenario                                                    |
 | AC-284 | retired | —                                                                                    |
 | AC-285 | retired | —                                                                                    |
 | AC-286 | retired | —                                                                                    |
@@ -334,15 +332,8 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-486 | gap     | needs an e2e driving the scenario                                                    |
 | AC-487 | gap     | needs an e2e driving the scenario                                                    |
 | AC-488 | gap     | needs an e2e driving the scenario                                                    |
-| AC-489 | gap     | needs an e2e driving the scenario                                                    |
-| AC-490 | gap     | needs an e2e driving the scenario                                                    |
-| AC-491 | gap     | needs an e2e driving the scenario                                                    |
 | AC-494 | gap     | needs an e2e driving the scenario                                                    |
-| AC-500 | gap     | needs an e2e driving the scenario                                                    |
-| AC-506 | gap     | needs an e2e asserting the project name in the archive and restore confirmations     |
-| AC-508 | gap     | needs an e2e driving the scenario                                                    |
 | AC-510 | gap     | needs an e2e driving the scenario                                                    |
-| AC-511 | gap     | needs an e2e clearing the start on the detail page while an end is set               |
 | AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)   |
 | AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based) |
 | AC-529 | gap     | needs an e2e of a failed search                                                      |
