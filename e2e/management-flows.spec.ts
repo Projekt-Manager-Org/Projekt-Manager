@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { clickView } from './nav-helpers';
 import { STRINGS } from '../src/config/strings';
 
@@ -27,6 +27,73 @@ import { STRINGS } from '../src/config/strings';
  */
 
 test.describe.configure({ mode: 'serial' });
+
+interface ApiAddress {
+  street: string;
+  zip: string;
+  city: string;
+}
+
+interface ApiCustomer {
+  id: string;
+  name: string;
+  address: ApiAddress | null;
+}
+
+interface ApiProject {
+  id: string;
+  number: string;
+  title: string;
+  siteAddress: ApiAddress | null;
+}
+
+/** The Baustelle toggle's label (ui/management.md §8.8.2). */
+const SITE_TOGGLE = 'Identisch mit Kundenadresse';
+
+/** The Baustelle group's address inputs, in street, zip, city order. */
+const SITE_FIELDS = ['street', 'zip', 'city'] as const;
+
+async function apiPost<T>(page: Page, url: string, data: object): Promise<T> {
+  const res = await page.request.post(url, { data });
+  expect(res.ok(), `POST ${url} returned ${res.status()}`).toBe(true);
+  return (await res.json()) as T;
+}
+
+async function apiGet<T>(page: Page, url: string): Promise<T> {
+  const res = await page.request.get(url);
+  expect(res.ok(), `GET ${url} returned ${res.status()}`).toBe(true);
+  return (await res.json()) as T;
+}
+
+async function allCustomers(page: Page): Promise<ApiCustomer[]> {
+  return (await apiGet<{ customers: ApiCustomer[] }>(page, '/api/customers')).customers;
+}
+
+/**
+ * Lets the next create POST to `path` reach the server, then drops its
+ * response, as a lost connection would: the server stores the row and the
+ * form, seeing a failure, stays open with its client-supplied id. Resolves
+ * with that id once the browser has seen the failure.
+ */
+async function loseNextCreateResponse(page: Page, path: string, submit: () => Promise<void>) {
+  let createId: string | undefined;
+  const matcher = (url: URL) => url.pathname === path;
+  await page.route(matcher, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    createId = (route.request().postDataJSON() as { id: string }).id;
+    await route.fetch();
+    await route.abort('failed');
+  });
+  const failed = page.waitForEvent(
+    'requestfailed',
+    (r) => r.method() === 'POST' && new URL(r.url()).pathname === path,
+  );
+  await submit();
+  await failed;
+  await page.unroute(matcher);
+  expect(createId, 'the create carried a client-supplied id').toBeDefined();
+  return createId!;
+}
 
 test.describe('Management flows', () => {
   /** Customer name created in step 18, referenced in step 19. */
@@ -601,5 +668,455 @@ test.describe('Management flows', () => {
     // Clean teardown — close via Esc (AC-758).
     await page.keyboard.press('Escape');
     await expect(nameInput).toBeHidden();
+  });
+
+  // ---------------------------------------------------------------
+  // Project forms and the project list: a test.step per [vis] AC. The
+  // fixtures are created here, so each case exists whatever earlier
+  // tests did; the API is the oracle for what is stored.
+  // ---------------------------------------------------------------
+  test('walks the project form and list ACs', async ({ page }) => {
+    const stamp = Date.now() % 1_000_000_000;
+    const ownSite = { street: 'Hafenstraße 9', zip: '20457', city: 'Hamburg' };
+    const customer = await apiPost<ApiCustomer>(page, '/api/customers', {
+      name: `Baustellenkunde ${stamp}`,
+      address: { street: 'Lindenweg 3', zip: '50667', city: 'Köln' },
+    });
+    const createProject = (suffix: string, extra: object = {}) =>
+      apiPost<ApiProject>(page, '/api/projects', {
+        number: `BS${stamp}-${suffix}`,
+        title: `Baustelle ${suffix}`,
+        customerId: customer.id,
+        ...extra,
+      });
+    const withSite = await createProject('E', { siteAddress: ownSite });
+    const atCustomer = await createProject('K');
+    const switched = await createProject('S', { siteAddress: ownSite });
+    const getProject = (id: string) => apiGet<ApiProject>(page, `/api/projects/${id}`);
+
+    // AC-494: four projects in a different order for each sortable column
+    // and direction. The planned start and the estimated value each leave
+    // one empty, which sorts last both ways (ui/management.md §8.8.1).
+    // `steps` forward transitions put a project at that workflow position
+    // (spec index.md, the state table); Abnahme makes workflow order differ
+    // from both key and label order.
+    const sortTag = `SO${stamp}`;
+    const sortFixtures = [
+      { key: 'a', title: 'b', customer: 'b', steps: 1, plannedStart: null, estimatedValue: 100 },
+      {
+        key: 'd',
+        title: 'a',
+        customer: 'c',
+        steps: 2,
+        plannedStart: '2031-05-02',
+        estimatedValue: 300,
+      },
+      {
+        key: 'c',
+        title: 'd',
+        customer: 'd',
+        steps: 0,
+        plannedStart: '2031-05-04',
+        estimatedValue: 200,
+      },
+      {
+        key: 'b',
+        title: 'c',
+        customer: 'a',
+        steps: 5,
+        plannedStart: '2031-05-03',
+        estimatedValue: null,
+      },
+    ].map((f) => ({
+      ...f,
+      number: `${sortTag}-${f.key}`,
+      title: `Sortierung ${f.title}`,
+      customer: `Sortkunde ${stamp} ${f.customer}`,
+    }));
+    const workflow = ['anfrage', 'angebot', 'beauftragt', 'geplant', 'in_arbeit'];
+    for (const f of sortFixtures) {
+      const c = await apiPost<ApiCustomer>(page, '/api/customers', { name: f.customer });
+      const p = await apiPost<ApiProject>(page, '/api/projects', {
+        number: f.number,
+        title: f.title,
+        customerId: c.id,
+        plannedStart: f.plannedStart,
+        estimatedValue: f.estimatedValue,
+      });
+      for (const expectedStatus of workflow.slice(0, f.steps)) {
+        const res = await page.request.post(`/api/projects/${p.id}/transition/forward`, {
+          data: { expectedStatus },
+        });
+        expect(res.ok(), `transition of ${f.number} ${res.status()}`).toBe(true);
+      }
+    }
+
+    // Every write the page sends to projects or customers.
+    const writes: string[] = [];
+    page.on('request', (r) => {
+      const path = new URL(r.url()).pathname;
+      if (r.method() !== 'GET' && /^\/api\/(projects|customers)\b/.test(path)) {
+        writes.push(`${r.method()} ${path}`);
+      }
+    });
+
+    const toggle = page.getByRole('checkbox', { name: SITE_TOGGLE });
+    const siteInput = (field: (typeof SITE_FIELDS)[number]) =>
+      page.getByTestId(`project-site-${field}-input`);
+    const expectSiteInputs = async (address: ApiAddress, enabled: boolean) => {
+      for (const field of SITE_FIELDS) {
+        await expect(siteInput(field)).toHaveValue(address[field]);
+        if (enabled) await expect(siteInput(field)).toBeEnabled();
+        else await expect(siteInput(field)).toBeDisabled();
+      }
+    };
+    const pickCustomer = async () => {
+      await page.getByTestId('project-customer-select').click();
+      await page
+        .getByTestId('project-customer-options')
+        .getByText(customer.name, { exact: true })
+        .click();
+    };
+    const modal = page.getByTestId('site-address-modal');
+    const openSiteDialog = async (projectId: string) => {
+      await page.goto(`/projects/${projectId}`);
+      await page.getByTestId('project-detail-site-address-edit').click();
+      await expect(modal).toBeVisible();
+    };
+    const cancelSiteDialog = async () => {
+      await modal.getByRole('button', { name: STRINGS.ui.cancel }).click();
+      await expect(modal).toHaveCount(0);
+    };
+
+    await page.getByTestId('view-toggle-projekte').click();
+    await expect(page.getByTestId('project-table')).toBeVisible();
+
+    await test.step("AC-486 the create form's Baustelle toggle starts on", async () => {
+      await page.getByTestId('project-create-button').click();
+      await expect(toggle).toBeChecked();
+    });
+
+    await test.step("AC-487 while the toggle is on, the address inputs are disabled and show the customer's", async () => {
+      await pickCustomer();
+      await expectSiteInputs(customer.address!, false);
+    });
+
+    await test.step('AC-488 switching the toggle stores nothing until the user saves', async () => {
+      const draftNumber = `BS${stamp}-N`;
+      const writesBefore = writes.length;
+      // The create form: switching creates no project. A submit started by
+      // a switch locks or closes the form, so each switch checks it is open.
+      const createOpen = () => expect(page.getByTestId('project-submit')).toBeEnabled();
+      await page.getByTestId('project-number-input').fill(draftNumber);
+      await page.getByTestId('project-title-input').fill('Entwurf');
+      await toggle.uncheck();
+      await createOpen();
+      for (const field of SITE_FIELDS) await siteInput(field).fill(ownSite[field]);
+      await toggle.check();
+      await createOpen();
+      await toggle.uncheck();
+      await createOpen();
+      await page.getByRole('button', { name: STRINGS.ui.cancel }).click();
+      await expect(page.getByTestId('project-submit')).toHaveCount(0);
+      const numbers = (await apiGet<{ data: ApiProject[] }>(page, '/api/projects')).data.map(
+        (p) => p.number,
+      );
+      expect(numbers).not.toContain(draftNumber);
+
+      // The edit dialog: switching leaves the stored site address alone.
+      const dialogOpen = async () => {
+        await expect(modal).toBeVisible();
+        await expect(modal.getByTestId('project-site-save')).toBeEnabled();
+      };
+      await openSiteDialog(switched.id);
+      await toggle.check();
+      await dialogOpen();
+      await expectSiteInputs(customer.address!, false);
+      await toggle.uncheck();
+      await dialogOpen();
+      await toggle.check();
+      await dialogOpen();
+      await cancelSiteDialog();
+      expect((await getProject(switched.id)).siteAddress).toEqual(ownSite);
+      expect(writes.slice(writesBefore)).toEqual([]);
+
+      // Saving stores the switch.
+      await openSiteDialog(switched.id);
+      await toggle.check();
+      const [patch] = await Promise.all([
+        page.waitForResponse(
+          (r) =>
+            r.request().method() === 'PATCH' &&
+            new URL(r.url()).pathname === `/api/projects/${switched.id}`,
+        ),
+        modal.getByTestId('project-site-save').click(),
+      ]);
+      expect(patch.ok(), `PATCH ${patch.status()}`).toBe(true);
+      await expect(modal).toHaveCount(0);
+      expect((await getProject(switched.id)).siteAddress).toBeNull();
+    });
+
+    await test.step('AC-510 the edit toggle starts off, the address filled in, exactly for an own site address', async () => {
+      expect((await getProject(withSite.id)).siteAddress).toEqual(ownSite);
+      await openSiteDialog(withSite.id);
+      await expect(toggle).not.toBeChecked();
+      await expectSiteInputs(ownSite, true);
+      await cancelSiteDialog();
+
+      expect((await getProject(atCustomer.id)).siteAddress).toBeNull();
+      await openSiteDialog(atCustomer.id);
+      await expect(toggle).toBeChecked();
+      await expectSiteInputs(customer.address!, false);
+      await cancelSiteDialog();
+    });
+
+    await page.getByTestId('view-toggle-projekte').click();
+    await expect(page.getByTestId('project-table')).toBeVisible();
+
+    await test.step('AC-494 a header click sorts the project list by its column; a second click reverses it', async () => {
+      type SortFixture = (typeof sortFixtures)[number];
+      const columns: [string, (f: SortFixture) => string | number | null][] = [
+        ['project-sort-number', (f) => f.number],
+        ['project-sort-title', (f) => f.title],
+        ['project-sort-customer', (f) => f.customer],
+        ['project-sort-status', (f) => f.steps],
+        ['project-sort-dates', (f) => f.plannedStart],
+        ['project-sort-value', (f) => f.estimatedValue],
+      ];
+      const order = (value: (f: SortFixture) => string | number | null, dir: 1 | -1) => {
+        const filled = sortFixtures.filter((f) => value(f) !== null);
+        filled.sort((a, b) => {
+          const x = value(a)!;
+          const y = value(b)!;
+          const cmp =
+            typeof x === 'number' && typeof y === 'number'
+              ? x - y
+              : String(x).localeCompare(String(y));
+          return cmp * dir;
+        });
+        return [...filled, ...sortFixtures.filter((f) => value(f) === null)].map((f) => f.number);
+      };
+
+      const stored = (await apiGet<{ data: ApiProject[] }>(page, '/api/projects')).data.filter(
+        (p) => p.number.startsWith(sortTag),
+      );
+      expect(stored).toHaveLength(sortFixtures.length);
+      await page.getByTestId('project-search').fill(sortTag);
+      const numberCells = page.getByTestId('project-table').locator('tbody tr td:first-child');
+      await expect(numberCells).toHaveCount(sortFixtures.length);
+      const shown = async () => (await numberCells.allTextContents()).map((t) => t.trim());
+      const same = (a: string[], b: string[]) => a.join('\n') === b.join('\n');
+      for (const [testId, value] of columns) {
+        // The spec leaves the first click's direction open; the second
+        // click must reverse it.
+        let first: 1 | -1 | undefined;
+        await page.getByTestId(testId).click();
+        await expect
+          .poll(
+            async () => {
+              const rows = await shown();
+              first = same(rows, order(value, 1))
+                ? 1
+                : same(rows, order(value, -1))
+                  ? -1
+                  : undefined;
+              return first;
+            },
+            { message: `${testId}, first click sorts by the column` },
+          )
+          .toBeDefined();
+        await page.getByTestId(testId).click();
+        await expect(numberCells, `${testId}, second click reverses`).toHaveText(
+          order(value, first === 1 ? -1 : 1),
+        );
+      }
+    });
+
+    await test.step('AC-762 a project create refused as an idempotency conflict closes the form and shows the list', async () => {
+      // A fresh, unsearched list. Clearing a search instead would refetch
+      // after a debounce, and a refetch starting after the refusal clears
+      // its message.
+      await page.reload();
+      await expect(page.getByTestId('project-table')).toBeVisible();
+      await expect(page.getByTestId('project-search')).toHaveValue('');
+      const number = `IK${stamp}`;
+      const title = page.getByTestId('project-title-input');
+      await page.getByTestId('project-create-button').click();
+      await page.getByTestId('project-number-input').fill(number);
+      await title.fill('Erste Fassung');
+      await pickCustomer();
+      const createId = await loseNextCreateResponse(page, '/api/projects', () =>
+        page.getByTestId('project-submit').click(),
+      );
+      const stored = await getProject(createId);
+      expect(stored.title).toBe('Erste Fassung');
+      await expect(title).toBeEnabled();
+      // The stored create's live refresh lands before the retry, as it does
+      // for a user; landing after the refusal, it would clear the message.
+      const row = page.getByRole('row', { name: new RegExp(number) });
+      await expect(row).toContainText(stored.title);
+
+      // The retry reuses the id with another title.
+      await title.fill('Zweite Fassung');
+      const [refused] = await Promise.all([
+        page.waitForResponse(
+          (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/projects',
+        ),
+        page.getByTestId('project-submit').click(),
+      ]);
+      expect(refused.status()).toBe(409);
+      expect((await refused.json()).code).toBe('IDEMPOTENCY_CONFLICT');
+      await expect(page.getByTestId('project-submit')).toHaveCount(0);
+      await expect(page.getByText(STRINGS.errors.idempotencyConflict)).toBeVisible();
+      await expect(row).toContainText(stored.title);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // The customer create form: a test.step per [vis] AC, on customers
+  // created here; the API is the oracle for what is stored.
+  // ---------------------------------------------------------------
+  test('walks the customer create form ACs', async ({ page }) => {
+    const stamp = Date.now() % 1_000_000_000;
+    const token = `Qx${stamp}`;
+    const alpha = await apiPost<ApiCustomer>(page, '/api/customers', {
+      name: `Kunde ${token} Alpha`,
+      address: { street: 'Domplatz 1', zip: '50667', city: 'Köln' },
+    });
+    await apiPost(page, '/api/customers', { name: `Kunde ${token} Beta` });
+    // A near miss the list must leave out.
+    await apiPost(page, '/api/customers', { name: `Kunde Qy${stamp} Gamma` });
+
+    const nameInput = page.getByTestId('customer-name-input');
+    const dropdown = page.getByTestId('customer-match-dropdown');
+    const listed = dropdown.locator('[data-testid^="customer-match-"]');
+    const submit = page.getByTestId('customer-submit');
+    const creates: string[] = [];
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && new URL(r.url()).pathname === '/api/customers') {
+        creates.push(r.url());
+      }
+    });
+
+    await page.getByTestId('view-toggle-kunden').click();
+    await expect(page.getByTestId('customer-table')).toBeVisible();
+
+    await test.step('AC-527 the create form lists the customers whose name contains the typed text, in any case', async () => {
+      const typed = `qX${stamp}`;
+      const expected = (await allCustomers(page)).filter((c) =>
+        c.name.toLowerCase().includes(typed.toLowerCase()),
+      );
+      expect(expected.length, 'customers matching the text').toBeGreaterThan(0);
+      await page.getByTestId('customer-create-button').click();
+      await nameInput.fill(typed);
+      await expect(listed).toHaveCount(expected.length);
+      for (const c of expected)
+        await expect(dropdown.getByTestId(`customer-match-${c.id}`)).toBeVisible();
+    });
+
+    await test.step("AC-528 picking a listed customer closes the create form and opens that customer's edit form", async () => {
+      await dropdown.getByTestId(`customer-match-${alpha.id}`).click();
+      await expect(submit).toHaveCount(0);
+      await expect(page.getByTestId('customer-save')).toBeVisible();
+      await expect(nameInput).toHaveValue(alpha.name);
+      await expect(page.getByTestId('customer-street-input')).toHaveValue(alpha.address!.street);
+      await expect(page.getByTestId('customer-city-input')).toHaveValue(alpha.address!.city);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('customer-save')).toHaveCount(0);
+    });
+
+    await test.step('AC-529 a failed name search lists nothing, shows no error, and the form keeps working', async () => {
+      await page.getByTestId('customer-create-button').click();
+      await nameInput.fill(`Kunde ${token}`);
+      await expect(listed.first()).toBeVisible();
+
+      let failures = 0;
+      const isSearch = (url: URL) =>
+        url.pathname === '/api/customers' && url.searchParams.has('search');
+      await page.route(isSearch, (route) => {
+        failures++;
+        return route.fulfill({
+          status: 500,
+          json: { code: 'SERVER_ERROR', message: STRINGS.errors.serverError },
+        });
+      });
+      try {
+        const name = `Kunde ${token} Neu`;
+        await nameInput.fill(name);
+        await expect.poll(() => failures, 'the search failed').toBeGreaterThan(0);
+        await expect(dropdown).toHaveCount(0);
+        await expect(page.getByText(STRINGS.errors.serverError)).toHaveCount(0);
+        await submit.click();
+        await expect(submit).toHaveCount(0);
+        const stored = (await allCustomers(page)).filter((c) => c.name === name);
+        expect(stored).toHaveLength(1);
+      } finally {
+        await page.unroute(isSearch);
+      }
+    });
+
+    await test.step('AC-536 a listed name is created only after "Trotzdem erstellen"; cancelling creates nothing', async () => {
+      const sameName = async () =>
+        (await allCustomers(page)).filter(
+          (c) => c.name.trim().toLowerCase() === alpha.name.toLowerCase(),
+        ).length;
+      expect(await sameName()).toBe(1);
+      const dialog = page.getByTestId('confirm-dialog');
+
+      await page.getByTestId('customer-create-button').click();
+      await nameInput.fill(`  ${alpha.name.toUpperCase()}  `);
+      await expect(dropdown.getByTestId(`customer-match-${alpha.id}`)).toBeVisible();
+      const createsBefore = creates.length;
+      await nameInput.press('Enter');
+      await expect(dialog).toBeVisible();
+      await dialog.getByTestId('confirm-cancel').click();
+      await expect(dialog).toHaveCount(0);
+      await expect(submit).toBeEnabled();
+      expect(creates.slice(createsBefore)).toEqual([]);
+      expect(await sameName()).toBe(1);
+
+      await nameInput.press('Enter');
+      await expect(dialog.getByTestId('confirm-ok')).toHaveText('Trotzdem erstellen');
+      await dialog.getByTestId('confirm-ok').click();
+      await expect(submit).toHaveCount(0);
+      expect(await sameName()).toBe(2);
+    });
+
+    await test.step('AC-762 a customer create refused as an idempotency conflict closes the form and shows the list', async () => {
+      const name = `Konflikt ${token}`;
+      const city = page.getByTestId('customer-city-input');
+      await page.getByTestId('customer-create-button').click();
+      // The name search settles before the first submit, so the retry
+      // finds no listed duplicate (AC-536) to confirm.
+      const searched = page.waitForResponse((r) => {
+        const url = new URL(r.url());
+        return url.pathname === '/api/customers' && url.searchParams.get('search') === name;
+      });
+      await nameInput.fill(name);
+      await page.getByTestId('customer-street-input').fill('Am Markt 1');
+      await page.getByTestId('customer-zip-input').fill('50667');
+      await city.fill('Köln');
+      await searched;
+      const createId = await loseNextCreateResponse(page, '/api/customers', () => submit.click());
+      const stored = await apiGet<ApiCustomer>(page, `/api/customers/${createId}`);
+      expect(stored.address?.city).toBe('Köln');
+      await expect(city).toBeEnabled();
+
+      // The retry reuses the id with another city.
+      await city.fill('Bonn');
+      const [refused] = await Promise.all([
+        page.waitForResponse(
+          (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/customers',
+        ),
+        submit.click(),
+      ]);
+      expect(refused.status()).toBe(409);
+      expect((await refused.json()).code).toBe('IDEMPOTENCY_CONFLICT');
+      await expect(submit).toHaveCount(0);
+      await expect(page.getByText(STRINGS.errors.idempotencyConflict)).toBeVisible();
+      await expect(page.getByRole('row', { name: new RegExp(name) })).toContainText(
+        stored.address!.city,
+      );
+    });
   });
 });
