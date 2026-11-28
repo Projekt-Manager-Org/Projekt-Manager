@@ -21,7 +21,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-8   | retired | —                                                                                    |
 | AC-9   | retired | —                                                                                    |
 | AC-10  | retired | —                                                                                    |
-| AC-12  | gap     | needs an e2e walking Kanban dot + calendar bar + detail badge for one project        |
 | AC-13  | retired | —                                                                                    |
 | AC-14  | retired | —                                                                                    |
 | AC-15  | retired | —                                                                                    |
@@ -332,17 +331,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-405 | gap     | e2e covers a document over the cap, not a photo after re-encoding                    |
 | AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review   |
 | AC-451 | gap     | e2e covers the storage totals, not the Export and Import progress byte counts        |
-| AC-455 | gap     | e2e asserts a bar is visible, not that it spans the planned dates                    |
-| AC-456 | gap     | needs an e2e with a start-only project                                               |
-| AC-464 | gap     | e2e asserts the counter label, not the count                                         |
-| AC-466 | gap     | needs an e2e clicking "Filter aufheben"                                              |
-| AC-467 | gap     | needs an e2e switching views with the filter active                                  |
-| AC-468 | gap     | needs an e2e driving the scenario                                                    |
-| AC-469 | gap     | needs an e2e asserting a Monday-start week                                           |
-| AC-471 | gap     | needs an e2e clearing the start in the panel while an end is set                     |
-| AC-472 | gap     | needs an e2e navigating back from the detail page to the panel's view                |
-| AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                |
-| AC-474 | gap     | needs an e2e at phone width opening a project from the board and the calendar        |
 | AC-486 | gap     | needs an e2e driving the scenario                                                    |
 | AC-487 | gap     | needs an e2e driving the scenario                                                    |
 | AC-488 | gap     | needs an e2e driving the scenario                                                    |
@@ -355,7 +343,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-508 | gap     | needs an e2e driving the scenario                                                    |
 | AC-510 | gap     | needs an e2e driving the scenario                                                    |
 | AC-511 | gap     | needs an e2e clearing the start on the detail page while an end is set               |
-| AC-514 | gap     | needs an e2e driving the scenario                                                    |
 | AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)   |
 | AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based) |
 | AC-529 | gap     | needs an e2e of a failed search                                                      |
@@ -375,23 +362,13 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-641 | gap     | needs an e2e driving the scenario                                                    |
 | AC-672 | gap     | needs an e2e driving the scenario                                                    |
 | AC-681 | gap     | needs an e2e driving the scenario                                                    |
-| AC-707 | gap     | needs an e2e confirming a Storno with an empty reason                                |
-| AC-712 | gap     | needs an e2e of the list order with drafts and issued invoices                       |
-| AC-713 | gap     | needs an e2e driving the scenario                                                    |
-| AC-714 | gap     | needs an e2e of the list search over number and recipient name                       |
-| AC-715 | gap     | needs an e2e of the year and status filters on the list                              |
-| AC-716 | gap     | needs an e2e of the year options beside an active filter                             |
 | AC-720 | gap     | needs an e2e: a live refresh keeps an open draft form and Storno confirmation        |
-| AC-725 | gap     | needs an e2e of the incomplete-profile banner and its link                           |
-| AC-726 | gap     | needs an e2e driving the scenario                                                    |
-| AC-731 | gap     | needs an e2e saving a draft form without a priced, described line                    |
 | AC-732 | gap     | needs an e2e driving the scenario                                                    |
 | AC-742 | gap     | needs an e2e walking every screen in the dark theme                                  |
 | AC-744 | gap     | needs an e2e driving the scenario                                                    |
 | AC-745 | gap     | needs an e2e driving the scenario                                                    |
 | AC-746 | gap     | needs an e2e driving the scenario                                                    |
 | AC-753 | gap     | needs an e2e driving the scenario                                                    |
-| AC-761 | gap     | needs an e2e driving the scenario                                                    |
 | AC-762 | gap     | needs an e2e driving the scenario                                                    |
 | AC-771 | infra   | deploy procedure — `scripts/deploy.sh`                                               |
 | AC-777 | gap     | needs an e2e driving the scenario                                                    |

@@ -3,9 +3,13 @@ import {
   addDays,
   differenceInCalendarDays,
   differenceInCalendarMonths,
+  eachDayOfInterval,
   format,
+  getDay,
   parseISO,
+  setDate,
 } from 'date-fns';
+import { STORAGE_STATES } from './storage-states';
 
 /**
  * E2E Kanban board flows
@@ -104,6 +108,75 @@ interface ApiProject {
 /** Calendar days since the project entered its state. */
 function daysInState(project: ApiProject): number {
   return differenceInCalendarDays(new Date(), parseISO(project.statusChangedAt));
+}
+
+interface DatedApiProject extends ApiProject {
+  plannedStart: string | null;
+  plannedEnd: string | null;
+}
+
+/** The widest viewport AC-474 calls narrow; one pixel more is wide (AC-473). */
+const NARROW_MAX_WIDTH = 768;
+
+/** AC-468's default display format, DD.MM.YYYY; `short` drops the year. */
+function displayDate(iso: string, short = false): string {
+  return format(parseISO(iso), short ? 'dd.MM.' : 'dd.MM.yyyy');
+}
+
+/** A timestamp's date in the company's zone (Germany), as DD.MM.YYYY. */
+function displayTimestampDate(iso: string): string {
+  return new Intl.DateTimeFormat('de-DE', {
+    timeZone: 'Europe/Berlin',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(iso));
+}
+
+/**
+ * The calendar days a project's bars cover: each bar segment covers the day
+ * cells of its week row whose horizontal centre lies within the bar.
+ */
+async function calendarDaysCovered(page: Page, projectId: string): Promise<string[]> {
+  return page.evaluate((id) => {
+    const covered = new Set<string>();
+    for (const bar of document.querySelectorAll(`[data-testid="calendar-bar-${id}"]`)) {
+      const b = bar.getBoundingClientRect();
+      for (const cell of bar.parentElement!.querySelectorAll('[data-testid^="calendar-day-"]')) {
+        const c = cell.getBoundingClientRect();
+        const centre = c.left + c.width / 2;
+        if (centre >= b.left && centre <= b.right) {
+          covered.add(cell.getAttribute('data-testid')!.slice('calendar-day-'.length));
+        }
+      }
+    }
+    return [...covered].sort();
+  }, projectId);
+}
+
+/** The calendar's week rows, each as its days' ISO dates from left to right. */
+async function calendarWeekRows(page: Page): Promise<string[][]> {
+  return page.getByTestId('calendar-grid').evaluate((grid) => {
+    const rows = new Map<Element, { left: number; iso: string }[]>();
+    for (const cell of grid.querySelectorAll('[data-testid^="calendar-day-"]')) {
+      const row = rows.get(cell.parentElement!) ?? [];
+      row.push({
+        left: cell.getBoundingClientRect().left,
+        iso: cell.getAttribute('data-testid')!.slice('calendar-day-'.length),
+      });
+      rows.set(cell.parentElement!, row);
+    }
+    return [...rows.values()].map((row) =>
+      row.sort((a, b) => a.left - b.left).map((cell) => cell.iso),
+    );
+  });
+}
+
+/** Every date from `start` to `end`, inclusive, as ISO dates. */
+function isoDaysBetween(start: string, end: string): string[] {
+  return eachDayOfInterval({ start: parseISO(start), end: parseISO(end) }).map((d) =>
+    format(d, 'yyyy-MM-dd'),
+  );
 }
 
 // Run this file's tests serially within a single worker. The suite has
@@ -486,6 +559,291 @@ test.describe('Kanban board flows', () => {
   });
 
   test.describe('Calendar view', () => {
+    test('walks the calendar and panel ACs', async ({ page, browser }) => {
+      // Fixtures are created here, not taken from the seed, so each case
+      // exists whatever earlier specs did; `GET /api/projects` is the oracle
+      // for the counts. The span and the start-only block sit in the current
+      // month (the calendar opens on it); the span crosses a week boundary.
+      // The cross-year range is for the board's date format.
+      const today = new Date();
+      const iso = (d: Date) => format(d, 'yyyy-MM-dd');
+      const spanStart = iso(setDate(today, 10));
+      const spanEnd = iso(setDate(today, 18));
+      const blockStart = iso(setDate(today, 20));
+      const crossYearStart = `${today.getFullYear()}-12-28`;
+      const crossYearEnd = `${today.getFullYear() + 1}-01-03`;
+
+      const stamp = Date.now() % 1_000_000_000;
+      const customer = await page.request.post('/api/customers', {
+        data: { name: `Kalender ${stamp}` },
+      });
+      expect(customer.ok(), `customer POST ${customer.status()}`).toBe(true);
+      const customerId = (await customer.json()).id as string;
+      const created: string[] = [];
+      const create = async (
+        suffix: string,
+        dates: { plannedStart?: string; plannedEnd?: string },
+      ) => {
+        const res = await page.request.post('/api/projects', {
+          data: {
+            number: `KAL-${stamp}-${suffix}`,
+            title: `Kalender ${suffix}`,
+            customerId,
+            ...dates,
+          },
+        });
+        expect(res.ok(), `project ${suffix} POST ${res.status()}`).toBe(true);
+        const id = (await res.json()).id as string;
+        created.push(id);
+        return id;
+      };
+      const fetchProjects = async () => {
+        const res = await page.request.get('/api/projects');
+        expect(res.ok(), `GET /api/projects returned ${res.status()}`).toBe(true);
+        return ((await res.json()) as { data: DatedApiProject[] }).data;
+      };
+
+      try {
+        const span = await create('S', { plannedStart: spanStart, plannedEnd: spanEnd });
+        const block = await create('B', { plannedStart: blockStart });
+        const crossYear = await create('Y', {
+          plannedStart: crossYearStart,
+          plannedEnd: crossYearEnd,
+        });
+        const undated = await create('U', {});
+        // A second state on the calendar for AC-12.
+        const moved = await page.request.post(`/api/projects/${block}/transition/forward`, {
+          data: { expectedStatus: 'anfrage' },
+        });
+        expect(moved.ok(), `transition ${moved.status()}`).toBe(true);
+
+        await page.reload();
+        await expect(page.getByTestId(`project-card-${undated}`)).toBeVisible();
+        const projects = await fetchProjects();
+        const projectById = new Map(projects.map((p) => [p.id, p]));
+        const cards = page.locator('[data-testid^="project-card-"]');
+        const panel = page.getByTestId('detail-panel');
+        const openCalendar = async () => {
+          await page.getByTestId('view-toggle-kalender').click();
+          await expect(page.getByTestId('calendar-view')).toBeVisible();
+        };
+
+        await test.step('AC-468 dates show as DD.MM.YYYY, a one-year range with a short start', async () => {
+          await expect(page.getByTestId(`card-dates-${span}`)).toHaveText(
+            `${displayDate(spanStart, true)} – ${displayDate(spanEnd)}`,
+          );
+          await expect(page.getByTestId(`card-dates-${crossYear}`)).toHaveText(
+            `${displayDate(crossYearStart)} – ${displayDate(crossYearEnd)}`,
+          );
+          await expect(page.getByTestId(`card-dates-${block}`)).toHaveText(displayDate(blockStart));
+          for (const id of [span, block, crossYear, undated]) {
+            await expect(page.getByTestId(`entry-date-${id}`)).toHaveText(
+              displayTimestampDate(projectById.get(id)!.statusChangedAt),
+            );
+          }
+        });
+
+        await test.step('AC-473 a click on a board card opens the panel over the board', async () => {
+          await page.getByTestId(`project-card-${span}`).click();
+          await expect(panel).toBeVisible();
+          await expect(panel).toContainText(projectById.get(span)!.number);
+          await expect(page.getByTestId('kanban-board')).toBeVisible();
+          await expect(page.getByTestId('project-detail-page')).toHaveCount(0);
+        });
+
+        await test.step('AC-761 a click outside the panel closes it', async () => {
+          const box = (await panel.boundingBox())!;
+          const outside = { x: box.x / 2, y: page.viewportSize()!.height / 2 };
+          expect(outside.x, 'the click point lies left of the panel').toBeLessThan(box.x);
+          await page.mouse.click(outside.x, outside.y);
+          await expect(panel).toHaveCount(0);
+        });
+
+        await test.step('AC-12 a state has one colour on card dots, calendar bars and the badge', async () => {
+          const dotColor = await page
+            .locator('[data-testid^="card-dot-"]')
+            .evaluateAll((els) =>
+              els.map(
+                (el) =>
+                  [
+                    el.getAttribute('data-testid')!.slice('card-dot-'.length),
+                    getComputedStyle(el).backgroundColor,
+                  ] as const,
+              ),
+            );
+          const stateColor = new Map<string, string>();
+          for (const [id, color] of dotColor) {
+            const state = projectById.get(id)!.status;
+            expect(color, `dot of ${projectById.get(id)!.number} (${state})`).toBe(
+              stateColor.get(state) ?? color,
+            );
+            stateColor.set(state, color);
+          }
+
+          await openCalendar();
+          await expect(page.getByTestId(`calendar-bar-${block}`).first()).toBeVisible();
+          const bars = await page.locator('[data-testid^="calendar-bar-"]').evaluateAll((els) =>
+            els.map((el) => ({
+              id: el.getAttribute('data-testid')!.slice('calendar-bar-'.length),
+              color: getComputedStyle(el).backgroundColor,
+            })),
+          );
+          const barStates = new Map<string, string>();
+          for (const { id, color } of bars) {
+            const state = projectById.get(id)!.status;
+            expect(color, `bar of ${projectById.get(id)!.number}`).toBe(stateColor.get(state));
+            barStates.set(state, id);
+          }
+          expect(barStates.size, 'needs bars in two states').toBeGreaterThanOrEqual(2);
+          for (const [state, id] of barStates) {
+            await page.getByTestId(`calendar-bar-${id}`).first().click();
+            await expect(page.getByTestId('detail-status-badge')).toHaveCSS(
+              'background-color',
+              stateColor.get(state)!,
+            );
+            await page.getByTestId('detail-close').click();
+            await expect(panel).toHaveCount(0);
+          }
+        });
+
+        await test.step('AC-469 calendar weeks start on Monday', async () => {
+          const isWeekFromMonday = (row: string[]) => {
+            expect(getDay(parseISO(row[0])), `weekday of the week starting ${row[0]}`).toBe(1);
+            expect(row).toEqual(isoDaysBetween(row[0], iso(addDays(parseISO(row[0]), 6))));
+          };
+          const monthRows = await calendarWeekRows(page);
+          expect(monthRows.length).toBeGreaterThanOrEqual(4);
+          monthRows.forEach(isWeekFromMonday);
+
+          await page.getByTestId('calendar-toggle-week').click();
+          await expect(page.locator('[data-testid^="calendar-day-"]')).toHaveCount(7);
+          const weekRows = await calendarWeekRows(page);
+          weekRows.forEach(isWeekFromMonday);
+          await page.getByTestId('calendar-toggle-month').click();
+          await expect(page.getByTestId(`calendar-day-${spanStart}`)).toBeVisible();
+        });
+
+        await test.step('AC-455 a project with start and end is a bar spanning those dates', async () => {
+          await expect(page.getByTestId(`calendar-bar-${span}`).first()).toBeVisible();
+          expect(await calendarDaysCovered(page, span)).toEqual(isoDaysBetween(spanStart, spanEnd));
+        });
+
+        await test.step('AC-456 a start-only project is a one-day block on its start', async () => {
+          await expect(page.getByTestId(`calendar-bar-${block}`)).toHaveCount(1);
+          expect(await calendarDaysCovered(page, block)).toEqual([blockStart]);
+        });
+
+        const undatedCount = projects.filter((p) => !p.plannedStart && !p.plannedEnd).length;
+        const counter = page.getByTestId('no-dates-counter');
+        const banner = page.getByTestId('kanban-filter-banner');
+
+        await test.step('AC-464 the calendar shows the count of projects without dates', async () => {
+          expect(undatedCount).toBeGreaterThan(0);
+          await expect(counter).toHaveText(`${undatedCount} Projekte ohne Termin`);
+        });
+
+        await test.step('AC-466 "Filter aufheben" removes the no-dates filter', async () => {
+          await counter.click();
+          await expect(banner).toBeVisible();
+          await expect(cards).toHaveCount(undatedCount);
+          await page.getByRole('button', { name: 'Filter aufheben' }).click();
+          await expect(banner).toHaveCount(0);
+          await expect(cards).toHaveCount(projects.length);
+        });
+
+        await test.step('AC-467 switching views removes the no-dates filter', async () => {
+          await openCalendar();
+          await counter.click();
+          await expect(banner).toBeVisible();
+          await openCalendar();
+          await page.getByTestId('view-toggle-kanban').click();
+          await expect(page.getByTestId('kanban-board')).toBeVisible();
+          await expect(banner).toHaveCount(0);
+          await expect(cards).toHaveCount(projects.length);
+        });
+
+        await test.step('AC-473 above 768 px a click on a calendar bar opens the panel', async () => {
+          await openCalendar();
+          await page.setViewportSize({ width: NARROW_MAX_WIDTH + 1, height: 1080 });
+          await page.getByTestId(`calendar-bar-${span}`).first().click();
+          await expect(panel).toBeVisible();
+          await expect(panel).toContainText(projectById.get(span)!.number);
+          await expect(page.getByTestId('calendar-view')).toBeVisible();
+          await expect(page.getByTestId('project-detail-page')).toHaveCount(0);
+          await page.getByTestId('detail-close').click();
+          await expect(panel).toHaveCount(0);
+          await page.setViewportSize({ width: 1920, height: 1080 });
+        });
+
+        await test.step('AC-472 back from the detail page shows the view the panel was on', async () => {
+          await page.getByTestId(`calendar-bar-${block}`).click();
+          await page.getByTestId('detail-open-page').click();
+          await expect(page.getByTestId('project-detail-page')).toBeVisible();
+          await expect(page).toHaveURL(new RegExp(`/projects/${block}$`));
+          await page.goBack();
+          await expect(page.getByTestId('calendar-view')).toBeVisible();
+        });
+
+        await test.step('AC-471 clearing the start in the panel clears the end too', async () => {
+          await page.getByTestId(`calendar-bar-${span}`).first().click();
+          const start = page.getByTestId('detail-date-start');
+          const end = page.getByTestId('detail-date-end');
+          await expect(start).toHaveValue(spanStart);
+          await expect(end).toHaveValue(spanEnd);
+          await start.fill('');
+          const [patch] = await Promise.all([
+            page.waitForResponse(
+              (r) =>
+                r.url().endsWith(`/api/projects/${span}/dates`) && r.request().method() === 'PATCH',
+            ),
+            start.blur(),
+          ]);
+          expect(patch.ok(), `PATCH dates ${patch.status()}`).toBe(true);
+          await expect(start).toHaveValue('');
+          await expect(end).toHaveValue('');
+          const stored = (await fetchProjects()).find((p) => p.id === span)!;
+          expect([stored.plannedStart, stored.plannedEnd]).toEqual([null, null]);
+          await page.getByTestId('detail-close').click();
+          await expect(page.getByTestId(`calendar-bar-${span}`)).toHaveCount(0);
+        });
+
+        await test.step('AC-474 at 768 px a click on a card or a bar opens the detail page', async () => {
+          const context = await browser.newContext({
+            storageState: STORAGE_STATES.owner,
+            viewport: { width: NARROW_MAX_WIDTH, height: 1024 },
+          });
+          try {
+            const phone = await context.newPage();
+            await phone.goto('/kanban');
+            // Below the tier widths the column is collapsed (AC-470); expand it.
+            const header = phone.getByTestId('column-header-anfrage');
+            await expect(phone.getByTestId('kanban-column-anfrage')).toBeVisible();
+            if ((await header.count()) === 0)
+              await phone.getByTestId('kanban-column-anfrage').click();
+            await phone.getByTestId(`project-card-${crossYear}`).click();
+            await expect(phone.getByTestId('project-detail-page')).toBeVisible();
+            await expect(phone).toHaveURL(new RegExp(`/projects/${crossYear}$`));
+            await expect(phone.getByTestId('detail-panel')).toHaveCount(0);
+
+            await phone.goto('/calendar');
+            await phone.getByTestId(`calendar-bar-${block}`).click();
+            await expect(phone.getByTestId('project-detail-page')).toBeVisible();
+            await expect(phone).toHaveURL(new RegExp(`/projects/${block}$`));
+            await expect(phone.getByTestId('detail-panel')).toHaveCount(0);
+          } finally {
+            await context.close();
+          }
+        });
+      } finally {
+        // Archive the fixtures so later tests see the board they expect.
+        for (const id of created) {
+          const res = await page.request.delete(`/api/projects/${id}`);
+          // Soft: a failed cleanup must not mask the failing AC step.
+          expect.soft(res.ok(), `archive ${id}: ${res.status()}`).toBe(true);
+        }
+      }
+    });
+
     test('shows the updated date bar after a detail-panel edit', async ({ page }) => {
       // Set up: pick a geplant project and change its end date (mirrors the
       // precondition from the original smoke test that fed this calendar check).

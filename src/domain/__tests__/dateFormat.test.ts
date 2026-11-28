@@ -63,7 +63,7 @@ describe('formatDateOnly', () => {
   });
 });
 
-// AC-468: dates in DD.MM.YYYY; a range within one year shortens its start to DD.MM.
+// AC-468: dates in DD.MM.YYYY; a range within one calendar year shortens its start to DD.MM.
 describe('calendar-date formatters', () => {
   // Planned and invoice dates are calendar dates with no zone. A runner
   // east of Berlin catches a formatter that shifts them through a zone
@@ -74,7 +74,7 @@ describe('calendar-date formatters', () => {
     expect(formatCalendarDateDE('2026-04-09')).toBe('09.04.2026');
   });
 
-  it('shortens the start of a range within one year', () => {
+  it('shortens the start of a range within one calendar year', () => {
     expect(formatDateRange('2026-04-14', '2026-05-02')).toBe('14.04. – 02.05.2026');
   });
 
