@@ -51,7 +51,7 @@ States, their order and per-state values: [index.md §3](index.md#3-workflow-sta
 - **AC-465** `[vis]`: When a user clicks the calendar's no-dates counter, the system shows the board with only the projects that have no planned dates.
 - **AC-466** `[vis]`: When a user clicks "Filter aufheben", the system removes the no-dates filter.
 - **AC-467** `[vis]`: When a user switches views, the system removes the no-dates filter.
-- **AC-468** `[vis]`: The system shows dates in the configured display format ([`[C]`](architecture.md#122-company-configurable-settings), default DD.MM.YYYY); a range within one year shortens its start to DD.MM.
+- **AC-468** `[vis]`: The system shows dates in the configured display format ([`[C]`](architecture.md#122-company-configurable-settings), default DD.MM.YYYY); a range within one calendar year shortens its start to DD.MM.
 - **AC-469** `[vis]`: Calendar weeks start on Monday.
 - **AC-470** `[vis]`: When the board is too narrow for all its columns expanded, the system collapses columns by tier ([index.md §3](index.md#3-workflow-states)), highest tier first.
 - **AC-788** `[vis]`: While the board's columns do not fit its width, the system lets the user scroll horizontally to every column.
