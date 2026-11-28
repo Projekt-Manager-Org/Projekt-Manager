@@ -330,7 +330,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-392 | retired | —                                                                                    |
 | AC-405 | gap     | e2e covers a document over the cap, not a photo after re-encoding                    |
 | AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review   |
-| AC-451 | gap     | e2e covers the storage totals, not the Export and Import progress byte counts        |
 | AC-486 | gap     | needs an e2e driving the scenario                                                    |
 | AC-487 | gap     | needs an e2e driving the scenario                                                    |
 | AC-488 | gap     | needs an e2e driving the scenario                                                    |
@@ -348,14 +347,6 @@ A row goes when the AC is covered; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                      |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                            |
 | AC-544 | retired | —                                                                                    |
-| AC-587 | gap     | needs an e2e driving the scenario                                                    |
-| AC-601 | gap     | needs an e2e driving the scenario                                                    |
-| AC-602 | gap     | needs an e2e driving the scenario                                                    |
-| AC-603 | gap     | needs an e2e driving the scenario                                                    |
-| AC-605 | gap     | needs an e2e driving the scenario                                                    |
-| AC-607 | gap     | needs an e2e driving the scenario                                                    |
-| AC-610 | gap     | needs an e2e driving the scenario                                                    |
-| AC-611 | gap     | needs an e2e driving the scenario                                                    |
 | AC-629 | gap     | needs an e2e driving the scenario                                                    |
 | AC-631 | gap     | needs an e2e driving the scenario                                                    |
 | AC-639 | gap     | needs an e2e driving the scenario                                                    |

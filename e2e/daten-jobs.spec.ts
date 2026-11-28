@@ -1,15 +1,23 @@
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type Browser,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
-import { unzipSync } from 'fflate';
+import { unzipSync, zipSync } from 'fflate';
 import {
   EXPECTED_RESTORE_PHRASE,
   SEED_DEFAULT_PASSWORD,
   SEED_USERS,
 } from '../src/test/seedAssumptions.js';
+import { STRINGS } from '../src/config/strings.js';
 import { STORAGE_STATES } from './storage-states';
 import { clickView } from './nav-helpers';
 import { reseedAllStorageStates } from './auth-helpers';
@@ -37,6 +45,8 @@ import { sweepStagedArtifact } from '../src/server/services/takeout-staging.js';
  *   AC-161  The Import confirmation-phrase input gates the start action: it
  *           stays disabled until the typed value matches the configured
  *           phrase.
+ *   The Daten view walk — one step per `[vis]` AC of the view's job states:
+ *           in progress, advancing, re-opened, interrupted, failed, restored.
  *
  * testids the UI implementation MUST introduce (per
  * `docs/wip/step4-ui-rewire-design.md §testids` — use these EXACT names;
@@ -67,13 +77,14 @@ test.describe.configure({ mode: 'serial' });
 test.use({ storageState: STORAGE_STATES.owner });
 
 /**
- * Teardown for the destructive roundtrip below.
+ * Teardown for the two destructive tests below.
  *
- * The roundtrip test drives an import JOB that wipes the account (TRUNCATEs
- * `users`, cascading through `sessions` — AC-597) and leaves the seed reshaped
- * (two extra attachments on the first project). The rest of the serial mutating
- * bucket reuses this file's shared `storageState` cookies and a pristine seed,
- * so this spec MUST restore both.
+ * The Daten view walk and the roundtrip each drive an import JOB that wipes
+ * the account (TRUNCATEs `users`, cascading through `sessions` — AC-597); the
+ * roundtrip also leaves the seed reshaped (two extra attachments on the first
+ * project). The rest of the serial mutating bucket reuses this file's shared
+ * `storageState` cookies and a pristine seed, so this spec MUST restore both:
+ * the walk calls `resetToSeed` at its end, this hook after the last test.
  *
  * Reset is done by re-running the canonical seed — identical to `auth.setup.ts`
  * — rather than snapshotting + restoring through the `/api/export` +
@@ -83,8 +94,12 @@ test.use({ storageState: STORAGE_STATES.owner });
  * login screen.
  */
 test.afterAll(async ({ browser }) => {
-  // 1. Reset the e2e DB to the canonical seed, undoing the roundtrip's wipe +
-  //    the two attachments it adds. `process.env.DATABASE_URL` already points
+  await resetToSeed(browser);
+});
+
+async function resetToSeed(browser: Browser): Promise<void> {
+  // 1. Reset the e2e DB to the canonical seed, undoing an import's wipe +
+  //    the attachments a test adds. `process.env.DATABASE_URL` already points
   //    at the isolated e2e database (set in playwright.config.ts, inherited by
   //    every worker) — the same handle `auth.setup.ts` opens to seed.
   const { db, pool } = createDatabase();
@@ -99,7 +114,7 @@ test.afterAll(async ({ browser }) => {
   //    is the contract that keeps the serial bucket authenticated, and MUST run
   //    unconditionally.
   await reseedAllStorageStates(browser);
-});
+}
 
 interface SeededAttachment {
   id: string;
@@ -502,12 +517,91 @@ function readArchive(zipBytes: Buffer): {
   };
 }
 
-// NOTE — declaration order is load-bearing in this serial file. The two
-// read-only export tests run FIRST; the destructive roundtrip below (its
-// import job wipes `users`, invalidating the shared `storageState` cookie for
-// every later test in the file) runs LAST. `afterAll` re-mints all storage
-// states. If the wipe ran before a read-only test, that test would open a
-// context with a now-dead cookie and land on the login screen.
+/** A data-exchange job row as `GET /api/{export,import}-jobs` returns it. */
+interface JobRow {
+  id: string;
+  kind: 'export' | 'import';
+  status: 'pending' | 'running' | 'ready' | 'failed';
+  filesTotal: number;
+  filesDone: number;
+  bytesTotal: number;
+  bytesDone: number;
+  currentItem: string | null;
+  errorDetail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  archiveAvailable: boolean;
+}
+
+function jobRow(kind: JobRow['kind'], status: JobRow['status'], p: Partial<JobRow>): JobRow {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    kind,
+    status,
+    filesTotal: 0,
+    filesDone: 0,
+    bytesTotal: 0,
+    bytesDone: 0,
+    currentItem: null,
+    errorDetail: null,
+    createdAt: now,
+    updatedAt: now,
+    startedAt: now,
+    finishedAt: null,
+    archiveAvailable: false,
+    ...p,
+  };
+}
+
+const KIB = 1024;
+const BYTE_TIERS = [
+  { unit: 'B', size: 1, decimals: 0 },
+  { unit: 'KB', size: KIB, decimals: 0 },
+  { unit: 'MB', size: KIB ** 2, decimals: 2 },
+  { unit: 'GB', size: KIB ** 3, decimals: 2 },
+] as const;
+
+/**
+ * The byte format of AC-451 on a live count: powers of 1024, B and KB whole,
+ * MB and GB with two decimals after a comma. The rounding mode is left open,
+ * so the shown value may be off by less than one displayed step.
+ */
+function expectByteCount(text: string, bytes: number): void {
+  const tier = [...BYTE_TIERS].reverse().find((t) => bytes >= t.size) ?? BYTE_TIERS[0];
+  const pattern = tier.decimals === 0 ? /^(\d+) (\w+)$/ : /^(\d+,\d{2}) (\w+)$/;
+  const match = text.trim().match(pattern);
+  const what = `"${text}" for ${bytes} bytes`;
+  expect(match, what).not.toBeNull();
+  expect(match![2], what).toBe(tier.unit);
+  const shown = Number(match![1].replace(',', '.')) * tier.size;
+  expect(Math.abs(shown - bytes), what).toBeLessThan(tier.size / 10 ** tier.decimals);
+}
+
+/**
+ * The archive the upload steps import: a valid zip of exactly 10 MiB with no
+ * `data.json`, so its restore fails validation and changes nothing (AC-593).
+ * It must span more than one upload chunk: the steps hold and drop the
+ * second one.
+ */
+const UPLOAD_ARCHIVE_BYTES = 10 * KIB ** 2;
+function uploadArchive(): { name: string; mimeType: string; buffer: Buffer } {
+  const zip = (filler: number) =>
+    Buffer.from(zipSync({ 'filler.bin': [new Uint8Array(filler), { level: 0 }] }));
+  const buffer = zip(UPLOAD_ARCHIVE_BYTES - zip(0).byteLength);
+  expect(buffer.byteLength).toBe(UPLOAD_ARCHIVE_BYTES);
+  return { name: 'teil-archiv.zip', mimeType: 'application/zip', buffer };
+}
+
+// NOTE — declaration order is load-bearing in this serial file. The read-only
+// export tests run FIRST. The two destructive tests (an import job wipes
+// `users`, invalidating the shared `storageState` cookie) follow: the Daten
+// view walk restores the seed and the storage states at its end, the
+// roundtrip runs LAST, and `afterAll` re-mints all storage states. If a wipe
+// ran before a read-only test, that test would open a context with a
+// now-dead cookie and land on the login screen.
 
 test('AC-606: export job surfaces the mobile-warning below the configured breakpoint', async ({
   page,
@@ -668,6 +762,352 @@ test('AC-585: an unreadable attachment fails the export in the UI — no downloa
     await db.execute(sql`DELETE FROM attachments WHERE id = ${badId}`);
     await pool.end();
   }
+});
+
+test('walks the Daten view ACs', async ({ page, browser }) => {
+  // Four real exports, two real imports, a 10 MiB upload and a reseed:
+  // ~10 s locally, too close to the default 30 s on a slower runner.
+  test.setTimeout(60_000);
+
+  const latestJob = async (kind: JobRow['kind']): Promise<JobRow | null> => {
+    // `page.request` bypasses `page.route`: this is the server's row.
+    const res = await page.request.get(`/api/${kind}-jobs`);
+    expect(res.ok(), `GET /api/${kind}-jobs returned ${res.status()}`).toBe(true);
+    return ((await res.json()) as { job: JobRow | null }).job;
+  };
+  const expectNoneActive = async (kind: JobRow['kind']) => {
+    const job = await latestJob(kind);
+    expect(['pending', 'running'], `no ${kind} in progress`).not.toContain(job?.status);
+  };
+  const pickImportFile = async (file: { name: string; mimeType: string; buffer: Buffer }) => {
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByTestId('data-import-button').click();
+    await (await chooser).setFiles(file);
+  };
+
+  await expectNoneActive('export');
+  await expectNoneActive('import');
+
+  // --- Export: the live build of a small seed ends within milliseconds, so
+  // the view reads scripted job rows. `page.request` stays unrouted.
+  let exportLatest: JobRow | null = null;
+  await page.route('**/api/export-jobs', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          status: 409,
+          json: { code: 'EXPORT_JOB_ACTIVE', message: STRINGS.errors.exportJobActive },
+        })
+      : route.fulfill({ json: { job: exportLatest } }),
+  );
+  let importLatest: JobRow | null = null;
+  await page.route('**/api/import-jobs', (route) => route.fulfill({ json: { job: importLatest } }));
+  const exportProgress = page.getByRole('dialog', { name: 'Export läuft', exact: true });
+  /** Both halves of a `<done> / <total>` byte readout, on a live or rounded value. */
+  const expectByteCounts = async (readout: Locator, done: number, total: number) => {
+    await expect(async () => {
+      const [shownDone, shownTotal] = (await readout.innerText()).split(' / ');
+      expectByteCount(shownDone!, done);
+      expectByteCount(shownTotal!, total);
+    }).toPass({ timeout: 5_000 });
+  };
+  /** A real export started through the API: the server's job-changed frame. */
+  const sendJobChangedFrame = async () => {
+    const res = await page.request.post('/api/export-jobs');
+    expect(res.status(), await res.text()).toBe(201);
+    await expect.poll(async () => (await latestJob('export'))?.status).toBe('ready');
+  };
+  const expectExportProgress = async (row: JobRow, bytes: string) => {
+    await expect(exportProgress).toBeVisible();
+    await expect(exportProgress.getByTestId('export-job-progress-counter')).toHaveText(
+      STRINGS.dataExchange.exportProgressCounter(row.filesDone, row.filesTotal),
+    );
+    await expect(exportProgress.getByTestId('export-job-progress-bytes')).toHaveText(bytes);
+    await expect(exportProgress.getByTestId('export-job-current-item')).toHaveText(
+      STRINGS.dataExchange.exportProgressCurrentFile(row.currentItem!),
+    );
+  };
+
+  await test.step('AC-601 starting an export while one is in progress shows that one', async () => {
+    await page.goto('/daten');
+    await page.getByTestId('data-export-button').click();
+    await expect(page.getByRole('dialog', { name: 'Daten exportieren' })).toBeVisible();
+    // Another export started after this page last looked: the start
+    // answers 409 and the latest row is that one.
+    exportLatest = jobRow('export', 'running', {
+      filesTotal: 4,
+      filesDone: 1,
+      bytesTotal: 8 * KIB,
+      bytesDone: 2 * KIB,
+      currentItem: 'Angebot.pdf',
+    });
+    await page.getByRole('button', { name: 'Export starten' }).click();
+    await expectExportProgress(exportLatest, '2 KB / 8 KB');
+  });
+
+  await test.step('AC-603 opening the Daten view shows the export in progress', async () => {
+    exportLatest = jobRow('export', 'running', {
+      filesTotal: 5,
+      filesDone: 2,
+      bytesTotal: 10 * KIB,
+      bytesDone: 3 * KIB,
+      currentItem: 'Aufmaß Küche.pdf',
+    });
+    await page.goto('/daten');
+    await expectExportProgress(exportLatest, '3 KB / 10 KB');
+  });
+
+  await test.step('AC-602 the export progress advances while the view is open', async () => {
+    exportLatest = {
+      ...exportLatest!,
+      filesDone: 3,
+      bytesDone: 7 * KIB,
+      currentItem: 'Foto Bad.jpg',
+    };
+    // The view refetches on the server's job-changed frame.
+    await sendJobChangedFrame();
+    await expectExportProgress(exportLatest, '7 KB / 10 KB');
+  });
+
+  // The import's second progress phase, the restore, runs on the server
+  // after the upload and ends within milliseconds on a live archive.
+  const restoring = page.getByRole('dialog', { name: 'Wiederherstellung läuft', exact: true });
+  const expectRestoreProgress = async (row: JobRow) => {
+    await expect(restoring).toBeVisible();
+    await expect(restoring.getByTestId('import-job-processing-counter')).toHaveText(
+      STRINGS.dataExchange.importProgressCounter(row.filesDone, row.filesTotal),
+    );
+    await expect(restoring.getByTestId('import-job-current-item')).toHaveText(
+      STRINGS.dataExchange.importProgressCurrentFile(row.currentItem!),
+    );
+  };
+
+  await test.step('AC-603 opening the Daten view shows the restore in progress', async () => {
+    exportLatest = null;
+    importLatest = jobRow('import', 'running', {
+      filesTotal: 6,
+      filesDone: 2,
+      bytesTotal: 10 * KIB,
+      bytesDone: 10 * KIB,
+      currentItem: 'Aufmaß Bad.pdf',
+    });
+    await page.goto('/daten');
+    await expectRestoreProgress(importLatest);
+  });
+
+  await test.step('AC-602 the restore progress advances while the view is open', async () => {
+    importLatest = { ...importLatest!, filesDone: 5, currentItem: 'Rechnung 2026-014.pdf' };
+    await sendJobChangedFrame();
+    await expectRestoreProgress(importLatest);
+  });
+
+  await test.step('AC-451 Export and Import progress byte counts are shown in powers of 1024', async () => {
+    // Each tier and its boundaries on exact values the live jobs cannot
+    // reach, then fractional KB values, whose rounding mode is open.
+    const exportBytes = exportProgress.getByTestId('export-job-progress-bytes');
+    const importBytes = page.getByTestId('import-job-upload-bytes');
+    for (const [done, total, text] of [
+      [1023, KIB, '1023 B / 1 KB'],
+      [1023 * KIB, KIB ** 2, '1023 KB / 1,00 MB'],
+      [1.5 * KIB ** 2, 2.25 * KIB ** 3, '1,50 MB / 2,25 GB'],
+      [1500, 2.5 * KIB, null],
+    ] as const) {
+      exportLatest = jobRow('export', 'running', {
+        filesTotal: 2,
+        bytesTotal: total,
+        bytesDone: done,
+        currentItem: 'Rechnung.pdf',
+      });
+      importLatest = jobRow('import', 'pending', { bytesTotal: total, bytesDone: done });
+      await page.goto('/daten');
+      for (const readout of [exportBytes, importBytes]) {
+        if (text) await expect(readout).toHaveText(text);
+        else await expectByteCounts(readout, done, total);
+      }
+    }
+  });
+  await page.unroute('**/api/import-jobs');
+  await page.unroute('**/api/export-jobs');
+
+  // --- Import: the live server throughout.
+  const archive = uploadArchive();
+  const archiveTotal = '10,00 MB';
+  const confirm = page.getByRole('dialog', { name: 'Daten importieren' });
+  const uploading = page.getByRole('dialog', { name: 'Hochladen …', exact: true });
+  const interrupted = page.getByRole('dialog', {
+    name: 'Upload unterbrochen. Zum Fortsetzen das Archiv über „Import“ erneut wählen.',
+    exact: true,
+  });
+  const uploadBytes = page.getByTestId('import-job-upload-bytes');
+  const expectUploadBytes = async (bytesDone: number) => {
+    await expect(async () => {
+      const [done, total] = (await uploadBytes.innerText()).split(' / ');
+      expectByteCount(done!, bytesDone);
+      expect(total).toBe(archiveTotal);
+    }).toPass({ timeout: 5_000 });
+  };
+  const sizeMismatch = 'Diese Datei gehört nicht zum laufenden Import.';
+  let uploadJob: JobRow;
+
+  await test.step('AC-607 a successful import shows the number of files it restored', async () => {
+    const zip = await exportJobZip(page);
+    const restorable = readArchive(zip).manifestAttachmentIds.length;
+    expect(restorable, 'the archive holds attachments').toBeGreaterThan(0);
+    await importJobZip(page, zip, '.tmp-daten-view-import.zip');
+    const job = await latestJob('import');
+    expect(job).toMatchObject({ status: 'ready', filesDone: restorable });
+    const result = page.getByRole('dialog', { name: 'Import abgeschlossen' });
+    await expect(result.getByTestId('import-job-restored')).toHaveText(
+      `${restorable} Anhänge wiederhergestellt`,
+    );
+  });
+
+  // The upload's chunk requests are held or dropped on cue, to stop it at a
+  // known point.
+  type Decision = 'send' | 'drop';
+  const patches: Array<{ offset: number; decide: (d: Decision) => void }> = [];
+  const archiveUrl = '**/api/import-jobs/*/archive';
+  await page.route(archiveUrl, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    const decision = await new Promise<Decision>((decide) =>
+      patches.push({ offset: Number(route.request().headers()['upload-offset']), decide }),
+    );
+    return decision === 'send' ? route.continue() : route.abort();
+  });
+
+  await test.step('AC-605 picking an archive shows its confirmation, not the earlier result', async () => {
+    await page.goto('/daten');
+    const result = page.getByRole('dialog', { name: 'Import abgeschlossen' });
+    await expect(result).toBeVisible();
+    await result.getByRole('button', { name: 'Schließen' }).click();
+    await pickImportFile(archive);
+    await expect(confirm).toBeVisible();
+    await expect(result).toHaveCount(0);
+  });
+
+  await test.step('AC-602 the upload progress advances while the view is open', async () => {
+    await page.getByTestId('import-job-phrase-input').fill(EXPECTED_RESTORE_PHRASE);
+    await page.getByRole('button', { name: 'Import starten' }).click();
+    await expect.poll(() => patches.length).toBe(1);
+    await expect(uploading).toBeVisible();
+    await expect(uploadBytes).toHaveText(`0 B / ${archiveTotal}`);
+
+    patches[0]!.decide('send');
+    await expect.poll(() => patches.length).toBe(2);
+    uploadJob = (await latestJob('import'))!;
+    expect(uploadJob).toMatchObject({ status: 'pending', bytesTotal: UPLOAD_ARCHIVE_BYTES });
+    expect(uploadJob.bytesDone, 'the first chunk landed').toBeGreaterThan(0);
+    expect(uploadJob.bytesDone).toBe(patches[1]!.offset);
+    await expect(uploading).toBeVisible();
+    await expectUploadBytes(uploadJob.bytesDone);
+  });
+
+  await test.step('AC-611 an upload this page stopped sending says how to continue it', async () => {
+    // A lost connection: the next chunk never reaches the server.
+    patches[1]!.decide('drop');
+    await expect(interrupted).toBeVisible();
+    await expectUploadBytes(uploadJob.bytesDone);
+    expect(await latestJob('import')).toMatchObject({
+      id: uploadJob.id,
+      status: 'pending',
+      bytesDone: uploadJob.bytesDone,
+    });
+  });
+
+  await test.step('AC-603 opening the Daten view shows the upload in progress', async () => {
+    await page.goto('/daten');
+    // A fresh page holds no upload state: what it shows is the server's.
+    await expect(interrupted).toBeVisible();
+    await expectUploadBytes(uploadJob.bytesDone);
+    expect(patches, 'opening the view sends nothing').toHaveLength(2);
+  });
+
+  await test.step('AC-610 a file of another size does not continue the upload', async () => {
+    await interrupted.getByRole('button', { name: 'Schließen' }).click();
+    await pickImportFile({
+      name: 'anderes.zip',
+      mimeType: 'application/zip',
+      buffer: archive.buffer.subarray(0, KIB),
+    });
+    await expect(confirm).toBeVisible();
+    await expect(confirm.getByRole('alert')).toHaveText(sizeMismatch);
+    await page.getByTestId('import-job-phrase-input').fill(EXPECTED_RESTORE_PHRASE);
+    await expect(page.getByRole('button', { name: 'Import starten' })).toBeDisabled();
+    expect(patches, 'nothing uploaded').toHaveLength(2);
+    expect(await latestJob('import')).toMatchObject({
+      id: uploadJob.id,
+      status: 'pending',
+      bytesDone: uploadJob.bytesDone,
+    });
+    await page.getByRole('button', { name: 'Abbrechen' }).click();
+    await expect(confirm).toHaveCount(0);
+  });
+
+  await test.step('AC-601 starting an import while one is in progress shows that one', async () => {
+    // The upload began after this page last looked: it loads without it, so
+    // only the start's 409 can lead it there.
+    await page.route('**/api/import-jobs', (route) => route.fulfill({ json: { job: null } }));
+    await page.goto('/daten');
+    await pickImportFile(archive);
+    await expect(confirm).toBeVisible();
+    await page.unroute('**/api/import-jobs');
+    await page.getByTestId('import-job-phrase-input').fill(EXPECTED_RESTORE_PHRASE);
+    await page.getByRole('button', { name: 'Import starten' }).click();
+    await expect.poll(() => patches.length).toBe(3);
+    // It continues the upload where the server stopped (AC-609)…
+    expect(patches[2]!.offset).toBe(uploadJob.bytesDone);
+    // …and shows that upload's progress, not a new one's.
+    await expect(uploading).toBeVisible();
+    await expectUploadBytes(uploadJob.bytesDone);
+    expect((await latestJob('import'))?.id, 'no second import').toBe(uploadJob.id);
+  });
+
+  await test.step('AC-587 a failed export or import shows the failure reason', async () => {
+    // Import: the completed upload fails validation (no data.json).
+    patches[2]!.decide('send');
+    await expect.poll(async () => (await latestJob('import'))?.status).toBe('failed');
+    const failedImport = (await latestJob('import'))!;
+    expect(failedImport.id).toBe(uploadJob.id);
+    expect(failedImport.errorDetail, 'the server names a reason').toBeTruthy();
+    await expect(page.getByTestId('import-job-error')).toHaveText(failedImport.errorDetail!);
+    await page.getByTestId('import-job-error-close').click();
+    await page.unroute(archiveUrl);
+
+    // Export: a `ready` attachment whose key cannot be unwrapped (AC-585).
+    // Seeded directly — the product offers no way to mint one.
+    const { db, pool } = createDatabase();
+    const badId = crypto.randomUUID();
+    try {
+      const projects = await page.request.get('/api/projects');
+      expect(projects.ok()).toBe(true);
+      const projectId = ((await projects.json()) as { data: Array<{ id: string }> }).data[0]?.id;
+      expect(projectId, 'a project to attach to').toBeDefined();
+      await db.execute(sql`
+        INSERT INTO attachments
+          (id, project_id, status, kind, label, filename, mime_type, size_bytes,
+           ciphertext_size_bytes, original_key, has_thumbnail,
+           wrapped_dek, wrapped_dek_version)
+        VALUES (${badId}, ${projectId}, 'ready', 'binary', 'sonstiges',
+                'unlesbar.pdf', 'application/pdf', 512, 540,
+                ${`attachments/${projectId}/${badId}.orig`}, FALSE,
+                ${crypto.randomBytes(192).toString('base64')}, 1)
+      `);
+      await page.getByTestId('data-export-button').click();
+      await page.getByRole('button', { name: 'Export starten' }).click();
+      await expect.poll(async () => (await latestJob('export'))?.status).toBe('failed');
+      const failedExport = (await latestJob('export'))!;
+      expect(failedExport.errorDetail, 'the server names a reason').toBeTruthy();
+      await expect(page.getByTestId('export-job-error')).toHaveText(failedExport.errorDetail!);
+      // Once the dialog is closed, the Export section shows it inline.
+      await page.getByTestId('export-job-error-close').click();
+      await expect(page.getByTestId('export-job-status')).toHaveText(failedExport.errorDetail!);
+    } finally {
+      await db.execute(sql`DELETE FROM attachments WHERE id = ${badId}`);
+      await pool.end();
+    }
+  });
+
+  // The import replaced every session; the roundtrip below needs fresh ones.
+  await resetToSeed(browser);
 });
 
 test('AC-586 / AC-594 / AC-161 / AC-584 / AC-604: export → import → export → import round preserves identity, bytes, and archive parity', async ({

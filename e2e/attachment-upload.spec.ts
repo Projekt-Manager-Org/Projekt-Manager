@@ -744,10 +744,8 @@ test.describe('Attachment and storage flows (owner on a fresh project)', () => {
       }).toPass({ timeout: 5_000 });
     });
 
-    // The storage-totals half of the §15.29 byte-format AC. Its ID joins
-    // this step once an e2e also asserts the Export and Import progress
-    // byte counts: a cited AC counts as covered (scripts/check-traceability.sh).
-    await test.step('storage totals are shown in powers of 1024', async () => {
+    // The storage-totals half; daten-jobs.spec.ts asserts the progress byte counts.
+    await test.step('AC-451 storage totals are shown in powers of 1024', async () => {
       await expect(async () => {
         const { ready, hidden } = await storageUsage();
         expectByteText(await badgeValue.innerText(), ready.plaintext);
