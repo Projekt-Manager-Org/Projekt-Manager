@@ -913,9 +913,9 @@ export class AttachmentService {
   async listForProject(caller: AuthUser, projectId: string): Promise<Attachment[]> {
     // 404 / 403 order mirrors the project-detail policy (AC-581) —
     // a missing project is 404, an existing project out-of-scope is 403.
-    // Archived projects ARE listed: the detail page renders them as a
-    // read-only preview (AC-500), so the attachment listing has
-    // to surface alongside the rest of the body. Mutation paths
+    // Archived projects ARE listed: the detail page renders them for
+    // reading, with only the AC-500 changes, so the attachment listing
+    // has to surface alongside the rest of the body. Mutation paths
     // (initUpload, hideAttachment) keep the archived gate.
     const projectRow = await getProjectRowById(this.db, projectId);
     if (!projectRow) throw notFound(STRINGS.entities.project);

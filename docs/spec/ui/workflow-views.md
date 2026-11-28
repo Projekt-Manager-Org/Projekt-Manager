@@ -58,7 +58,7 @@ Contents:
 - **`Öffnen`** — opens the Project Detail Page ([AC-207](../verification.md#1512-projects), [AC-472](../verification.md#151-workflow-board))
 - Status badge in the state color, with the German label
 - Customer: name, phone (clickable), email (clickable)
-- `Baustelle:` line, rendered as on the Project Detail Page ([project-detail.md §8.15.2](project-detail.md#8152-core-fields)), with a single map link
+- `Baustelle` line, rendered as on the Project Detail Page ([project-detail.md §8.15.2](project-detail.md#8152-core-fields)), with a single map link
 - **Planned start / end** date pickers ([AC-7](../verification.md#151-workflow-board), [AC-471](../verification.md#151-workflow-board); valid combinations: [AC-482](../verification.md#1512-projects))
 - Assigned workers (display names). Editing is on the Project Detail Page ([project-detail.md §8.15.3](project-detail.md#8153-assigned-worker-editor)).
 - Estimated value, formatted as `8.500,00 €`

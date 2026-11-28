@@ -165,7 +165,7 @@ export const STRINGS = {
 
     // Site-address (Baustelle) labels — see ui/management.md §8.8.2
     // and ui/project-detail.md §8.15.2. The Baustelle group on the
-    // project create / edit forms and the read-only `Baustelle:` line
+    // project create / edit forms and the read-only `Baustelle` line
     // on both detail surfaces source their German copy from these keys.
     siteAddressLabel: 'Baustelle',
     /** Form toggle that maps to `siteAddress: null` on submit. */

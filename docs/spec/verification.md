@@ -186,7 +186,7 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 - **AC-509** `[vis]`: When a user who may read a project ([api.md §14.3](api.md#143-authorization-rules), [AC-581](#1521-role-scoping)) opens its Project Detail Page, the system shows it.
 - **AC-507** `[vis]`: If a worker opens the Project Detail Page of a project they are not assigned to, the system shows the not-permitted surface ([AC-149](#1521-role-scoping)).
 - **AC-508** `[vis]`: If a user opens the Project Detail Page of a project that does not exist, the system shows a not-found message.
-- **AC-500** `[vis]`: While a project is archived, its Project Detail Page shows an archived notice and offers no change other than `Wiederherstellen` and `Endgültig löschen`.
+- **AC-500** `[vis]`: While a project is archived, its Project Detail Page shows an archived notice and offers no change other than `Wiederherstellen`, `Endgültig löschen` and restoring from its Papierkorb ([AC-425](#1526-attachments)).
 - **AC-207** `[vis]`: While the detail panel is open, it offers `Öffnen`, which opens the project's Project Detail Page.
 - **AC-277** `[crit]`: When a project changes — its customer and assigned workers included — every open view showing the project shows the change within 2 seconds, without a reload.
 

@@ -649,7 +649,7 @@ function makeAttachment(overrides: Partial<Attachment>): Attachment {
 }
 
 describe('ProjectDetailPage — archived project (AC-500)', () => {
-  it('AC-500: shows the archived notice and offers no change but restore and permanent delete', async () => {
+  it('AC-500: shows the archived notice and, outside the Papierkorb, offers no change but restore and permanent delete', async () => {
     // An owner on a `rechnung_faellig` project with assigned workers, a
     // photo, a document, a draft and an issued invoice: on an active
     // project, each of them offers a change.
