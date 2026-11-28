@@ -9,6 +9,9 @@
  *   - The preflight does NOT block submission (server is authoritative).
  *   - An idempotency conflict closes the create form and shows the
  *     refreshed list with the message (AC-762).
+ *   - `Endgültig löschen` asks for confirmation naming the project and
+ *     warning that its data is lost for good; only a confirmed dialog
+ *     purges (AC-505).
  *
  * API client is stubbed; real stores run.
  */
@@ -27,6 +30,7 @@ type CustomerListResult = ApiResult<{ customers: Customer[]; total: number }>;
 const projectListMock = vi.fn<() => Promise<ProjectListResult>>();
 const customerListMock = vi.fn<() => Promise<CustomerListResult>>();
 const projectCreateMock = vi.fn<() => Promise<ApiResult<Project>>>();
+const projectPurgeMock = vi.fn<(id: string) => Promise<ApiResult<null>>>();
 
 vi.mock('@/api/client', () => ({
   projectApi: {
@@ -34,6 +38,8 @@ vi.mock('@/api/client', () => ({
     create: (...args: unknown[]) =>
       projectCreateMock(...(args as Parameters<typeof projectCreateMock>)),
     delete: vi.fn(),
+    purge: (...args: unknown[]) =>
+      projectPurgeMock(...(args as Parameters<typeof projectPurgeMock>)),
     update: vi.fn(),
     updateDates: vi.fn(),
     transitionForward: vi.fn(),
@@ -56,6 +62,7 @@ vi.mock('@/api/client', () => ({
 }));
 
 const { ProjectManagement } = await import('@/ui/management/ProjectManagement');
+const { ConfirmDialog } = await import('@/ui/common/ConfirmDialog');
 const { useAuthStore } = await import('@/state/authStore');
 const { useProjectManagementStore } = await import('@/state/projectManagementStore');
 
@@ -90,6 +97,9 @@ beforeEach(() => {
   projectListMock.mockReset();
   customerListMock.mockReset();
   projectCreateMock.mockReset();
+  projectPurgeMock.mockReset();
+  // Never settles: the test asserts the dispatch, not the store's follow-up.
+  projectPurgeMock.mockReturnValue(new Promise(() => {}));
   projectListMock.mockResolvedValue(ok({ data: [], total: 0 }));
   customerListMock.mockResolvedValue(ok({ customers: [], total: 0 }));
   useAuthStore.setState({
@@ -413,5 +423,44 @@ describe('ProjectManagement — idempotency conflict (AC-762)', () => {
     });
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(await screen.findByText('Bestand')).toBeInTheDocument();
+  });
+});
+
+describe('ProjectManagement — permanent delete (AC-505)', () => {
+  it('AC-505: asks for confirmation naming the project and warning its data is lost for good', async () => {
+    projectListMock.mockResolvedValue(
+      ok({
+        data: [mockProject({ id: 'p-9', number: 'P-009', title: 'Altbau', deleted: true })],
+        total: 1,
+      }),
+    );
+    useProjectManagementStore.setState({ showArchived: true });
+    renderWithRouter(
+      <>
+        <ProjectManagement />
+        <ConfirmDialog />
+      </>,
+    );
+    const purge = await screen.findByTestId('project-purge-button');
+
+    await userEvent.click(purge);
+    // The message itself carries the warning — a dialog title or the
+    // button label alone would not. German for "data … lost for good".
+    const message = screen.getByRole('dialog').getAttribute('aria-describedby');
+    const text = document.getElementById(message!)!.textContent;
+    expect(text).toContain('P-009');
+    expect(text).toContain('Altbau');
+    expect(text).toMatch(/endgültig/i);
+    expect(text).toMatch(/Daten/);
+    expect(text).toMatch(/verloren/);
+    expect(projectPurgeMock).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId('confirm-cancel'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(projectPurgeMock).not.toHaveBeenCalled();
+
+    await userEvent.click(purge);
+    await userEvent.click(screen.getByTestId('confirm-ok'));
+    expect(projectPurgeMock).toHaveBeenCalledExactlyOnceWith('p-9');
   });
 });

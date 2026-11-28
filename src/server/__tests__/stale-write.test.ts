@@ -9,6 +9,11 @@
  *     that rejects everything cannot pass.
  *   - AC-699: a stale issue allocates no number and leaves the
  *     draft, the project, the sequence and the PDF prefix in storage untouched.
+ *   - AC-729, server half: an issue or discard confirmed on a version the
+ *     draft has since left is refused as a conflict and changes nothing —
+ *     the AC-375 `Delete draft` arm and the AC-699 arm. The client half
+ *     (the dialog keeps that version through a live refresh) is in
+ *     `InvoiceSection.test.tsx` and `InvoiceListRow.test.tsx`.
  *   - AC-381: two writes carrying the same current version, queued
  *     in a fixed order behind a row lock held by a third connection, commit
  *     exactly once — the first in the queue.

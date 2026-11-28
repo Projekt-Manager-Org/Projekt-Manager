@@ -12,10 +12,16 @@
  * the tax-rate select follows the tax mode (ui/invoices.md §8.16.2), and the
  * recipient's USt-IdNr. is pre-filled and editable, with unchanged fields
  * left to the server pre-fill.
+ *
+ * AC-729: the `Ausstellen` / `Verwerfen` confirmation acts on the version
+ * it opened on — a live refresh behind it changes neither the preview nor
+ * the version sent — and the server's conflict refusal reaches the user.
+ * That the server refuses and changes nothing is pinned in
+ * `src/server/__tests__/stale-write.test.ts`.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import type { ApiResult } from '@/api/client';
@@ -51,6 +57,7 @@ vi.mock('@/api/client', async (importActual) => {
 });
 
 const { InvoiceSection } = await import('@/ui/detail/invoice/InvoiceSection');
+const { ConfirmDialog } = await import('@/ui/common/ConfirmDialog');
 const { invoicesApi } = await import('@/api/client');
 const { useAuthStore } = await import('@/state/authStore');
 const { useInvoiceStore } = await import('@/state/invoiceStore');
@@ -213,6 +220,7 @@ function renderSection(opts: RenderOptions = {}) {
                 archived={false}
               />
               <LocationProbe />
+              <ConfirmDialog />
             </>
           }
         />
@@ -494,5 +502,53 @@ describe('InvoiceSection — draft editor tax-rate select', () => {
       lines: Array<{ taxRate: number }>;
     };
     expect(payload.lines[0]!.taxRate).toBe(19);
+  });
+});
+
+describe('InvoiceSection — AC-729: the issue / discard confirmation acts on the version it opened on', () => {
+  const STALE = 'Inzwischen geändert. Die aktuelle Fassung wurde geladen – bitte erneut versuchen.';
+  // The draft another session repriced while the dialog was open:
+  // 1 × 2.000,00 net + 19 % = 2.380,00 gross (v1: 1.785,00).
+  const repriced = makeDraft({
+    version: 2,
+    lines: [{ ...makeDraft().lines[0]!, unitPrice: 2000, lineTotal: 2000 }],
+    totals: {
+      perRate: [{ taxRate: 19, netSubtotal: 2000, taxAmount: 380 }],
+      netGrandTotal: 2000,
+      taxGrandTotal: 380,
+      grossGrandTotal: 2380,
+    },
+  });
+  const conflict = {
+    ok: false as const,
+    error: { code: 'VERSION_CONFLICT', message: STALE },
+    category: 'server_error' as const,
+    sessionExpired: false,
+  };
+
+  it.each([
+    { name: 'Ausstellen', button: 'invoice-issue-button', api: 'issue' },
+    { name: 'Verwerfen', button: 'invoice-draft-delete', api: 'deleteDraft' },
+  ] as const)('$name', async ({ button, api }) => {
+    const send = vi.mocked(invoicesApi[api]);
+    send.mockReset();
+    send.mockResolvedValue(conflict);
+    renderSection({ search: '' });
+    const row = await screen.findByTestId('invoice-row-draft-1');
+
+    await userEvent.click(within(row).getByTestId(button));
+    const dialog = screen.getByTestId('confirm-dialog');
+    expect(dialog).toHaveTextContent(/1\.785,00/);
+
+    // A live refresh lands behind the open dialog.
+    listByProjectMock.mockResolvedValue({ ok: true, data: { data: [repriced], total: 1 } });
+    await act(() => useInvoiceStore.getState().fetchByProject('proj-abc'));
+    expect(row).toHaveTextContent(/2\.380,00/);
+    expect(dialog).toHaveTextContent(/1\.785,00/);
+    expect(dialog).not.toHaveTextContent(/2\.380,00/);
+
+    await userEvent.click(screen.getByTestId('confirm-ok'));
+    expect(send).toHaveBeenCalledExactlyOnceWith('draft-1', 1);
+    expect(await screen.findByRole('alert')).toHaveTextContent(STALE);
   });
 });
